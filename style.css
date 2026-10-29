@@ -261,3 +261,9 @@ details.more > label { margin-top: 8px; }
 }
 .dist { font-weight: 600; color: var(--ink); }
 .list-head { margin: 18px 0 4px; font-size: 1.05rem; } .list-head .muted { font-weight: 500; }
+.maybe-seg { margin: 4px 0 10px; }
+.maybe-seg .count { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 99px; background: var(--line); font-size: .75rem; }
+.bulk-btn { width: 100%; margin-bottom: 4px; }
+.bulk { display: grid; gap: 10px; }
+.bulk-log { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; display: grid; gap: 6px; font-size: .85rem; overflow-wrap: anywhere; }
+.bulk-log:empty { display: none; }

@@ -12,7 +12,7 @@
   <title>Chicago Weekend</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✶</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
   <!-- Lock screen -->
@@ -124,10 +124,12 @@
           <h2 class="section-title">Maybe list</h2>
           <div class="row"><button class="btn link-btn" data-status="idea">🔗 Link</button><button class="btn primary add-btn" data-status="idea">+ Add</button></div>
         </div>
-        <p class="muted small">Things we might want to do. 👍 what you like, then move winners to the plan.</p>
+        <div class="seg maybe-seg" id="maybe-seg"></div>
+        <button id="bulk-btn" class="btn bulk-btn">📋 Bulk add event links</button>
         <div class="chips" id="dist-controls"></div>
         <div id="ideas-list"></div>
 
+        <div id="find-section">
         <h2 class="section-title spaced">Find things</h2>
         <form id="search-form" class="row">
           <input id="search-q" type="search" placeholder="Search Chicago — e.g. jazz bar, ramen, Wrigley">
@@ -137,6 +139,7 @@
 
         <div class="chips" id="sugg-filters"></div>
         <div id="suggestions"></div>
+        </div>
       </section>
 
       <!-- MAP -->
@@ -213,6 +216,22 @@
     </form>
   </dialog>
 
+  <!-- Bulk add -->
+  <dialog id="bulk-dialog">
+    <div class="bulk">
+      <h3>Bulk add events</h3>
+      <p class="small muted">Paste as many Eventbrite, Partiful, Dice or other links as you want — one per line, or just paste a whole message. Each one lands in Maybe → Events with its name, picture and date when we can find them.</p>
+      <textarea id="bulk-text" rows="7" placeholder="https://www.eventbrite.com/e/…&#10;https://partiful.com/e/…&#10;https://dice.fm/event/…"></textarea>
+      <ul id="bulk-log" class="bulk-log"></ul>
+      <div class="row end">
+        <button type="button" id="bulk-paste" class="btn">Paste</button>
+        <span class="grow"></span>
+        <button type="button" id="bulk-cancel" class="btn">Cancel</button>
+        <button type="button" id="bulk-go" class="btn primary">Add all</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Shared list setup -->
   <dialog id="sync-dialog">
     <form id="sync-form" method="dialog">
@@ -239,7 +258,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="places.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="places.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

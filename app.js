@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "12";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "13";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -374,12 +374,16 @@
   }
   const RADII = [["Any", Infinity], ["< 1 mi", 1], ["< 3 mi", 3], ["< 6 mi", 6]];
   let sortBy = "votes", within = Infinity;
+  let maybeView = "events";
+  try { maybeView = sessionStorage.getItem("chi.maybeView") || "events"; } catch {}
   const inRange = (p) => within === Infinity || (milesFromHome(p) ?? Infinity) <= within;
   function renderDistControls() {
     $("#dist-controls").innerHTML =
-      `<span class="small muted">Sort</span>` +
-      [["votes", "👍 Votes"], ["near", "🏠 Closest"]].map(([v, l]) => `<button class="chip ${sortBy === v ? "on" : ""}" data-sort="${v}">${l}</button>`).join("") +
-      `<span class="small muted" style="margin-left:6px">From home</span>` +
+      (maybeView === "places"
+        ? `<span class="small muted">Sort</span>` +
+          [["votes", "👍 Votes"], ["near", "🏠 Closest"]].map(([v, l]) => `<button class="chip ${sortBy === v ? "on" : ""}" data-sort="${v}">${l}</button>`).join("")
+          + `<span class="small muted" style="margin-left:6px">From home</span>`
+        : `<span class="small muted">Sorted by date · From home</span>`) +
       RADII.map(([l, v]) => `<button class="chip ${within === v ? "on" : ""}" data-within="${v}">${l}</button>`).join("");
   }
 
@@ -412,7 +416,6 @@
         return list.length ? `<div class="day-head">${esc(d.label)}</div>${list.map(itemCard).join("")}` : "";
       }).join("");
     }
-    const hidden = allIdeas.length - ideas.length;
     const events = ideas.filter(isEvent).sort(byDate);
     const places = ideas.filter((i) => !isEvent(i));
     let lastDay = null;
@@ -421,13 +424,19 @@
       lastDay = it.day;
       return head + itemCard(it);
     }).join("");
-    $("#ideas-list").innerHTML = !allIdeas.length
-      ? `<div class="empty">No ideas yet. Paste an event link, search below, or tap + on a suggestion.</div>`
-      : `<h3 class="list-head">🎟 Events <span class="muted small">${events.length} · by date</span></h3>
-         ${events.length ? eventHtml : `<div class="empty small">No events yet — tap 🔗 Link to paste an Eventbrite or Partiful link.</div>`}
-         <h3 class="list-head">📍 Places <span class="muted small">${places.length}${sortBy === "near" ? " · closest first" : " · by votes"}</span></h3>
-         ${places.length ? places.map(itemCard).join("") : `<div class="empty small">${within === Infinity ? "No places yet." : "Nothing that close yet."}</div>`}`
-      + (hidden ? `<div class="small muted" style="margin:-4px 0 8px">${hidden} more farther away${allIdeas.some((i) => i.lat == null) ? " or without a location" : ""}.</div>` : "");
+    const nEvents = allIdeas.filter(isEvent).length, nPlaces = allIdeas.length - nEvents;
+    $("#maybe-seg").innerHTML = `
+      <button type="button" data-view="events" class="${maybeView === "events" ? "on" : ""}">🎟 Events <span class="count">${nEvents}</span></button>
+      <button type="button" data-view="places" class="${maybeView === "places" ? "on" : ""}">📍 Places <span class="count">${nPlaces}</span></button>`;
+    const shown = maybeView === "events" ? events : places;
+    const total = maybeView === "events" ? nEvents : nPlaces;
+    const hiddenHere = total - shown.length;
+    $("#ideas-list").innerHTML = (maybeView === "events"
+      ? (events.length ? eventHtml : `<div class="empty">${nEvents ? "No events that close." : "No events yet.<br>Tap 🔗 Link for one, or <b>Bulk add</b> to paste a bunch at once."}</div>`)
+      : (places.length ? places.map(itemCard).join("") : `<div class="empty">${nPlaces ? "Nothing that close yet." : "No places yet. Search below or tap + on a suggestion."}</div>`))
+      + (hiddenHere ? `<div class="small muted" style="margin:-4px 0 8px">${hiddenHere} more farther away or without a location.</div>` : "");
+    $("#find-section").hidden = maybeView !== "places";
+    $("#bulk-btn").hidden = maybeView !== "events";
     renderSuggestions();
   }
 
@@ -461,14 +470,14 @@
   }
 
   // ---------- item actions ----------
-  function addItem(fields) {
+  function addItem(fields, { quiet = false } = {}) {
     const item = {
       id: uid(), title: "", status: "idea", day: "", time: "", category: "Other",
       address: "", url: "", notes: "", lat: null, lng: null,
       addedBy: ME, votes: [ME], done: false, createdAt: Date.now(), ...fields,
     };
     queue({ type: "upsert", id: item.id, item });
-    toast(`Added to ${item.status === "plan" ? "the plan" : "Maybe"}`);
+    if (!quiet) toast(`Added to ${item.status === "plan" ? "the plan" : "Maybe"}`);
     if (item.lat == null) autoPin(item);
   }
 
@@ -720,31 +729,71 @@
 
   // ---------- paste a link ----------
   const MONTHS = { oct: 9, october: 9, nov: 10, november: 10 };
-  // Pull the trip day and time out of text like "Sat, Oct 31, 2026 at 9:00 PM" or "Saturday, October 31 · 9pm".
+  const tripIso = (mon, day) => {
+    const iso = `2026-${String(MONTHS[mon.toLowerCase()] + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return DAYS.some((x) => x.value === iso) ? iso : null;
+  };
+  // Pull the trip day and time out of text like "Sat, Oct 31, 2026 at 9:00 PM", "31st Oct", "10/31" or "21:00".
   function findWhen(text) {
+    text = String(text).replace(/[-_]/g, " ");
     const out = {};
-    const d = String(text).match(/\b(oct(?:ober)?|nov(?:ember)?)\.?\s+(\d{1,2})\b/i);
-    if (d) {
-      const iso = `2026-${String(MONTHS[d[1].toLowerCase()] + 1).padStart(2, "0")}-${d[2].padStart(2, "0")}`;
-      if (DAYS.some((x) => x.value === iso)) out.day = iso;
-    }
-    const t = String(text).match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i);
-    if (t) {
-      const mins = Math.round((+t[2] || 0) / 15) * 15;
-      const h = +t[1] + (mins === 60 ? 1 : 0);
-      const label = `${((h - 1) % 12) + 1}:${String(mins % 60).padStart(2, "0")} ${t[3].toUpperCase()}M`;
+    const md = text.match(/\b(oct(?:ober)?|nov(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    const dm = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(oct(?:ober)?|nov(?:ember)?)\b/i);
+    const num = text.match(/\b(10|11)\/(\d{1,2})\b/);
+    out.day = (md && tripIso(md[1].slice(0, 3), md[2])) || (dm && tripIso(dm[2].slice(0, 3), dm[1]))
+      || (num && tripIso(num[1] === "10" ? "oct" : "nov", num[2])) || undefined;
+    let h, m;
+    const t = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i);
+    const t24 = text.match(/\b(1[3-9]|2[0-3]):([0-5]\d)\b/);
+    if (t) { h = (+t[1] % 12) + (/p/i.test(t[3]) ? 12 : 0); m = +t[2] || 0; }
+    else if (t24) { h = +t24[1]; m = +t24[2]; }
+    if (h != null) {
+      let mins = h * 60 + Math.round(m / 15) * 15;
+      const hh = Math.floor(mins / 60) % 24, label = `${hh % 12 || 12}:${String(mins % 60).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
       if (TIMES.includes(label)) out.time = label;
     }
     return out;
   }
+  const titleCase = (x) => x.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+  // Turn a preview title into a clean name, plus a venue when the site puts one in the title.
   function cleanTitle(title, url) {
-    let t = (title || "").replace(/\s*[|–-]\s*(Eventbrite|Partiful)\s*$/i, "");
+    let t = (title || "").replace(/\s*[|–-]\s*(Eventbrite|Partiful|DICE|Dice\.fm)\s*$/i, "");
+    let venue = "";
+    if (/dice\.fm/i.test(url)) {
+      const parts = t.split(/\s+\|\s+/);
+      if (parts.length > 1) { t = parts[0]; venue = parts[1]; }
+    }
     t = t.replace(/\s+Tickets?,?\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^|]*$/i, "").replace(/\s+Tickets?$/i, "");
     if (!t) {
-      const slug = (url.match(/eventbrite\.[^/]+\/e\/([^/?#]+?)-tickets-\d+/i) || [])[1];
-      if (slug) t = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const eb = url.match(/eventbrite\.[^/]+\/e\/([^/?#]+?)-tickets-\d+/i);
+      const dice = url.match(/dice\.fm\/event\/[a-z0-9]+-([^/?#]+?)(?:-tickets)?(?:[/?#]|$)/i);
+      if (eb) t = titleCase(eb[1]);
+      else if (dice) t = titleCase(dice[1].replace(/\b\d{1,2}(st|nd|rd|th)-(oct|nov)\b.*$/i, ""));
     }
-    return t.trim();
+    return { title: t.trim(), venue: venue.trim() };
+  }
+
+  // Everything we can learn about a link from its share preview.
+  async function previewLink(url) {
+    let data = {};
+    try {
+      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+      const body = await res.json();
+      if (body.status === "success") data = body.data || {};
+    } catch {}
+    const { title, venue } = cleanTitle(data.title, url);
+    const when = findWhen(`${data.title || ""} ${data.description || ""} ${decodeURIComponent(url)}`);
+    const event = EVENT_SITES.test(url);
+    return {
+      ok: !!title,
+      title, day: when.day || "", time: when.time || "",
+      notes: clip(data.description || "", 500),
+      image: data.image?.url || "",
+      address: venue ? (/chicago/i.test(venue) ? venue : `${venue}, Chicago`) : "",
+      url,
+      kind: event ? "event" : "",
+      category: event ? "Nightlife" : "",
+    };
   }
 
   async function importLink(raw) {
@@ -754,32 +803,22 @@
     st.hidden = false;
     st.textContent = "Reading the link…";
     form.url.value = url;
-    if (!form.category.value || form.category.value === "Other") {
-      if (EVENT_SITES.test(url)) form.category.value = "Nightlife";
-    }
-    if (EVENT_SITES.test(url)) form.kind.value = "event";
-    let data = {};
-    try {
-      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
-      const body = await res.json();
-      if (body.status === "success") data = body.data || {};
-    } catch {}
-    const title = cleanTitle(data.title, url);
-    if (title && !form.title.value.trim()) form.title.value = title;
-    if (data.description && !form.notes.value.trim()) form.notes.value = clip(data.description, 500);
-    if (data.image?.url) {
-      form.image.value = data.image.url;
-      $("#link-img").src = data.image.url;
+    const p = await previewLink(url);
+    if (p.kind) form.kind.value = p.kind;
+    if (p.category && (!form.category.value || form.category.value === "Other")) form.category.value = p.category;
+    if (p.title && !form.title.value.trim()) form.title.value = p.title;
+    if (p.notes && !form.notes.value.trim()) form.notes.value = p.notes;
+    if (p.address && !form.address.value.trim()) form.address.value = p.address;
+    if (p.image) {
+      form.image.value = p.image;
+      $("#link-img").src = p.image;
       $("#link-img").hidden = false;
     }
-    const when = findWhen(`${data.title || ""} ${data.description || ""}`);
-    if (when.day || when.time) {
-      if (when.day) setDay(when.day);
-      if (when.time) { form.time.value = when.time; requestAnimationFrame(() => wheelSet(when.time)); }
-    }
+    if (p.day) setDay(p.day);
+    if (p.time) { form.time.value = p.time; requestAnimationFrame(() => wheelSet(p.time)); }
     $("details.more", form).open = true;
-    st.textContent = title
-      ? `✓ Got it${when.day ? ` — ${dayLabel(when.day)}${when.time ? " · " + when.time : ""}` : " — pick a day"}`
+    st.textContent = p.ok
+      ? `✓ Got it${p.day ? ` — ${dayLabel(p.day)}${p.time ? " · " + p.time : ""}` : " — pick a day"}`
       : "Couldn't read that link — saved it, just type a name.";
     if (!form.title.value.trim()) form.title.focus();
   }
@@ -790,6 +829,58 @@
       $("#link-in").value = text;
       importLink(text);
     } catch { $("#link-in").focus(); toast("Long-press the box and tap Paste"); }
+  });
+
+  // ---------- bulk add ----------
+  const bulk = $("#bulk-dialog");
+  const urlsIn = (text) => [...new Set((String(text).match(/https?:\/\/[^\s<>"')\]]+/g) || []).map((u) => u.replace(/[.,;!]+$/, "")))];
+  function bulkCount() {
+    const n = urlsIn($("#bulk-text").value).length;
+    $("#bulk-go").textContent = n ? `Add ${n} link${n === 1 ? "" : "s"}` : "Add all";
+    $("#bulk-go").disabled = !n;
+  }
+  $("#bulk-text").addEventListener("input", bulkCount);
+  $("#bulk-paste").addEventListener("click", async () => {
+    try { $("#bulk-text").value += (await navigator.clipboard.readText()) + "\n"; bulkCount(); }
+    catch { $("#bulk-text").focus(); toast("Long-press the box and tap Paste"); }
+  });
+  $("#bulk-cancel").addEventListener("click", () => bulk.close());
+  function openBulk() {
+    $("#bulk-text").value = "";
+    $("#bulk-log").innerHTML = "";
+    $("#bulk-text").hidden = false;
+    $("#bulk-go").hidden = false;
+    $("#bulk-paste").hidden = false;
+    $("#bulk-cancel").textContent = "Cancel";
+    bulkCount();
+    bulk.showModal();
+  }
+  $("#bulk-go").addEventListener("click", async () => {
+    const have = new Set(view().items.map((i) => (i.url || "").replace(/\/+$/, "")));
+    const urls = urlsIn($("#bulk-text").value);
+    const log = $("#bulk-log");
+    $("#bulk-text").hidden = true;
+    $("#bulk-go").hidden = true;
+    $("#bulk-paste").hidden = true;
+    $("#bulk-cancel").textContent = "Close";
+    log.innerHTML = urls.map((u, i) => `<li data-b="${i}"><span class="muted">⏳</span> ${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60))}</li>`).join("");
+    let added = 0;
+    const row = (i, html) => { const li = $(`[data-b="${i}"]`, log); if (li) li.innerHTML = html; };
+    // Two at a time keeps the free preview service happy.
+    let next = 0;
+    async function worker() {
+      while (next < urls.length) {
+        const i = next++, u = urls[i];
+        if (have.has(u.replace(/\/+$/, ""))) { row(i, `<span class="muted">↩︎ Already on the list</span> ${esc(u.slice(0, 50))}`); continue; }
+        const p = await previewLink(u);
+        const title = p.title || u.replace(/^https?:\/\/(www\.)?/, "").split(/[/?#]/)[0];
+        addItem({ ...p, title, kind: p.kind || "event", category: p.category || "Nightlife", status: "idea" }, { quiet: true });
+        added++;
+        row(i, `${p.ok ? "✅" : "⚠️"} <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found</span>`}`);
+      }
+    }
+    await Promise.all([worker(), worker()]);
+    toast(`Added ${added} event${added === 1 ? "" : "s"} to Maybe`);
   });
 
   // ---------- map ----------
@@ -926,6 +1017,8 @@
       if (map) map.closePopup();
       return;
     }
+    const mv = e.target.closest("[data-view]");
+    if (mv) { maybeView = mv.dataset.view; try { sessionStorage.setItem("chi.maybeView", maybeView); } catch {} renderLists(); return; }
     const so = e.target.closest("[data-sort]");
     if (so) { sortBy = so.dataset.sort; renderLists(); return; }
     const wi = e.target.closest("[data-within]");
@@ -948,6 +1041,7 @@
   $("#plan-list").addEventListener("click", onItemAction);
   $("#ideas-list").addEventListener("click", onItemAction);
   $$(".add-btn").forEach((b) => b.addEventListener("click", () => openEditor({ status: b.dataset.status })));
+  $("#bulk-btn").addEventListener("click", openBulk);
   $$(".link-btn").forEach((b) => b.addEventListener("click", () => { openEditor({ status: b.dataset.status }); $("#link-in").focus(); }));
   $$(".tabbar button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("#show-sugg").addEventListener("change", () => renderMap());
