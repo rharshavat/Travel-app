@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "9";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "10";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -792,6 +792,7 @@
     const env = await (await fetch("trip.enc.json", { cache: "no-store" })).json();
     KEY = await deriveKey(passcode, fromB64(env.salt), env.iterations);
     TRIP = await decryptEnvelope(env);   // throws on a wrong passcode
+    if (!syncUrl && TRIP.syncUrl) { syncUrl = TRIP.syncUrl; store.set(LS.sync, syncUrl); }
   }
 
   async function start() {
