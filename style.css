@@ -260,3 +260,4 @@ details.more > label { margin-top: 8px; }
   font: inherit; font-weight: 700; color: #04263a; background: var(--blue); border: 0; border-radius: var(--radius); cursor: pointer;
 }
 .dist { font-weight: 600; color: var(--ink); }
+.list-head { margin: 18px 0 4px; font-size: 1.05rem; } .list-head .muted { font-weight: 500; }

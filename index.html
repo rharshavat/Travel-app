@@ -12,7 +12,7 @@
   <title>Chicago Weekend</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✶</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <!-- Lock screen -->
@@ -188,6 +188,11 @@
           <div class="row"><input name="address" placeholder="Address — or leave blank, we'll look it up"><button type="button" id="geo-btn" class="btn">Find</button></div>
         </label>
         <div id="geo-status" class="small muted"></div>
+        <label>Type
+          <select name="kind">
+            <option value="">Auto (event if it has a day)</option><option value="event">🎟 Event</option><option value="place">📍 Place</option>
+          </select>
+        </label>
         <label>Category
           <select name="category">
             <option>Food</option><option>Drinks</option><option>Nightlife</option><option>Sights</option>
@@ -234,7 +239,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="places.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="places.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

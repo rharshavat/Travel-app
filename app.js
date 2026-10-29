@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "11";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "12";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -383,6 +383,18 @@
       RADII.map(([l, v]) => `<button class="chip ${within === v ? "on" : ""}" data-within="${v}">${l}</button>`).join("");
   }
 
+  const timeKey = (t) => {
+    const m = String(t || "").match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (!m) return 9999;
+    let h = +m[1] % 12; if (/pm/i.test(m[3] || "")) h += 12; if (!m[3] && +m[1] < 7) h += 12;
+    if (/am/i.test(m[3] || "") && h < 5) h += 24;   // 1 AM sorts after 11 PM
+    return h * 60 + (+m[2] || 0);
+  };
+  const EVENT_SITES = /eventbrite|partiful|lu\.ma|dice\.fm|ra\.co|ticketmaster|axs\.com|seetickets|songkick|bandsintown|meetup\.com/i;
+  // Events have a date (or came from an event site); everything else is a place. "kind" overrides.
+  const isEvent = (it) => (it.kind ? it.kind === "event" : !!it.day || EVENT_SITES.test(it.url || ""));
+  const byDate = (a, b) => (a.day || "9999").localeCompare(b.day || "9999") || timeKey(a.time) - timeKey(b.time);
+
   function renderLists() {
     const items = view().items;
     const plan = items.filter((i) => i.status === "plan");
@@ -395,21 +407,26 @@
     if (!plan.length) {
       $("#plan-list").innerHTML = `<div class="empty">Nothing locked in yet.<br>Add something, or promote an idea from the Maybe list.</div>`;
     } else {
-      const timeKey = (t) => {
-        const m = String(t || "").match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-        if (!m) return 9999;
-        let h = +m[1] % 12; if (/pm/i.test(m[3] || "")) h += 12; if (!m[3] && +m[1] < 7) h += 12;
-        if (/am/i.test(m[3] || "") && h < 5) h += 24;   // 1 AM sorts after 11 PM
-        return h * 60 + (+m[2] || 0);
-      };
       $("#plan-list").innerHTML = DAYS.map((d) => {
         const list = plan.filter((i) => (i.day || "") === d.value).sort((a, b) => timeKey(a.time) - timeKey(b.time));
         return list.length ? `<div class="day-head">${esc(d.label)}</div>${list.map(itemCard).join("")}` : "";
       }).join("");
     }
     const hidden = allIdeas.length - ideas.length;
-    $("#ideas-list").innerHTML = (ideas.length ? ideas.map(itemCard).join("")
-      : `<div class="empty">${allIdeas.length ? "Nothing that close yet." : "No ideas yet. Search below or tap + on a suggestion."}</div>`)
+    const events = ideas.filter(isEvent).sort(byDate);
+    const places = ideas.filter((i) => !isEvent(i));
+    let lastDay = null;
+    const eventHtml = events.map((it) => {
+      const head = it.day !== lastDay ? `<div class="day-head">${esc(dayLabel(it.day || ""))}</div>` : "";
+      lastDay = it.day;
+      return head + itemCard(it);
+    }).join("");
+    $("#ideas-list").innerHTML = !allIdeas.length
+      ? `<div class="empty">No ideas yet. Paste an event link, search below, or tap + on a suggestion.</div>`
+      : `<h3 class="list-head">🎟 Events <span class="muted small">${events.length} · by date</span></h3>
+         ${events.length ? eventHtml : `<div class="empty small">No events yet — tap 🔗 Link to paste an Eventbrite or Partiful link.</div>`}
+         <h3 class="list-head">📍 Places <span class="muted small">${places.length}${sortBy === "near" ? " · closest first" : " · by votes"}</span></h3>
+         ${places.length ? places.map(itemCard).join("") : `<div class="empty small">${within === Infinity ? "No places yet." : "Nothing that close yet."}</div>`}`
       + (hidden ? `<div class="small muted" style="margin:-4px 0 8px">${hidden} more farther away${allIdeas.some((i) => i.lat == null) ? " or without a location" : ""}.</div>` : "");
     renderSuggestions();
   }
@@ -554,6 +571,7 @@
     $("#link-status").hidden = true;
     $("#link-img").hidden = !it.image;
     if (it.image) $("#link-img").src = it.image;
+    form.kind.value = it.kind || "";
     for (const k of ["title", "address", "category", "url", "notes", "lat", "lng", "time", "image"]) {
       form[k].value = it[k] ?? (k === "category" ? "Other" : "");
     }
@@ -737,8 +755,9 @@
     st.textContent = "Reading the link…";
     form.url.value = url;
     if (!form.category.value || form.category.value === "Other") {
-      if (/eventbrite|partiful|lu\.ma|dice\.fm|ra\.co/i.test(url)) form.category.value = "Nightlife";
+      if (EVENT_SITES.test(url)) form.category.value = "Nightlife";
     }
+    if (EVENT_SITES.test(url)) form.kind.value = "event";
     let data = {};
     try {
       const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
