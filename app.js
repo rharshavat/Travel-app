@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "16";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "17";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -765,6 +765,12 @@
       const parts = t.split(/\s+\|\s+/);
       if (parts.length > 1) { t = parts[0]; venue = parts[1]; }
     }
+    if (/(^|[/.])ra\.co\/|residentadvisor/i.test(url)) {
+      // RA titles look like "RA: Night Moves at Smartbar, Chicago (2026)" or "Night Moves at Smartbar, Chicago · Tickets · RA".
+      t = t.replace(/^RA:\s*/i, "").replace(/(\s*[·|]\s*(Tickets|RA|Resident Advisor))+\s*$/i, "").replace(/\s*\(\d{4}\)\s*$/, "");
+      const at = t.match(/^(.*\S)\s+at\s+(.+)$/i);
+      if (at) { t = at[1]; venue = at[2]; }
+    }
     t = t.replace(/\s+Tickets?,?\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^|]*$/i, "").replace(/\s+Tickets?$/i, "");
     if (!t) {
       const eb = url.match(/eventbrite\.[^/]+\/e\/([^/?#]+?)-tickets-\d+/i);
@@ -845,7 +851,10 @@
     },
   ];
   // Titles that mean we got a gate, redirect or app-download page instead of the event.
-  const JUNK_TITLE = /^(just a moment|attention required|access denied|404|page not found|redirecting|loading|open in app|get the .*app|download .*|(dice|dice\.fm|partiful|eventbrite|ticketmaster|luma|ra|resident advisor)(\s*[|:–-].*)?)$/i;
+  const JUNK_TITLE = {
+    test: (t) => /^(just a moment|attention required|access denied|forbidden|404|page not found|redirecting|loading|please wait|one moment|checking your browser|verify(ing)? you are human|are you a robot|security check|captcha|open in app|get the .*app|download )/i.test(t)
+      || /^(dice|dice\.fm|partiful|eventbrite|ticketmaster|luma|ra|ra\.co|resident advisor)(\s*[|·–-]\s*(the\s+)?(best|live|official|discover|find|buy|tickets?|events?|music|parties|app|home)\b.*)?$/i.test(t),
+  };
   const SHORT_LINK = /^https?:\/\/(link\.dice\.fm|dice\.link|evt\.to|eventbrite\.com\/e\/?$|bit\.ly|tinyurl\.com|t\.co|lnkd\.in|ow\.ly|app\.link|[a-z0-9-]+\.app\.link|go\.dice\.fm)\//i;
   async function fetchMeta(url) {
     let finalUrl = "";
