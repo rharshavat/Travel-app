@@ -6,7 +6,7 @@ A private, mobile-friendly trip page for the group: Airbnb info and codes, house
 - It's a static site (plain HTML, CSS and JS) hosted on GitHub Pages.
 - The Airbnb details (address, codes, Wi-Fi, rules) are **encrypted** in `trip.enc.json`. The repo is public, but nobody can read them without the trip passcode.
 - The shared lists are encrypted with the same passcode and stored in a free Firebase Realtime Database (or, if it's reachable, an anonymous [jsonblob.com](https://jsonblob.com) blob). The site checks for updates every 10 seconds.
-- The map uses Leaflet with OpenStreetMap/CARTO tiles. Place search uses Photon (OpenStreetMap data). The forecast comes from Open-Meteo.
+- The map uses Leaflet with OpenStreetMap tiles (no API key needed). Place search uses Photon (OpenStreetMap data). The forecast comes from Open-Meteo.
 
 ## First-time setup
 1. Turn on GitHub Pages: **Settings → Pages → Deploy from a branch**, pick the branch and `/ (root)`.
