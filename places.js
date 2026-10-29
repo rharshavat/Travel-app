@@ -1,5 +1,30 @@
 // Curated starter ideas. Coordinates are approximate; always double-check hours.
 window.SUGGESTIONS = [
+  // The Infatuation picks (names from their Chicago guides; we look up the map pin when you add one)
+  { title: "Oriole", category: "Food", area: "West Loop", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-restaurants-chicago", lat: null, lng: null, notes: "Their top-rated restaurant in the city. Splurge tasting menu — book ahead." },
+  { title: "Kasama", category: "Food", area: "Ukrainian Village", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-restaurants-chicago", lat: null, lng: null, notes: "Filipino bakery by day, tasting menu at night. Go early for pastries." },
+  { title: "Cariño", category: "Food", area: "Uptown", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-restaurants-chicago", lat: null, lng: null, notes: "Mexican tasting menu; also does a late-night taco omakase." },
+  { title: "Alinea", category: "Food", area: "Lincoln Park", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-restaurants-chicago", lat: null, lng: null, notes: "Three Michelin stars. Big-occasion territory." },
+  { title: "Monteverde", category: "Food", area: "West Loop", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-restaurants-chicago", lat: null, lng: null, notes: "Handmade pasta. Reservations go fast." },
+  { title: "Pizzeria Gabbo", category: "Food", area: "Chicago", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-new-chicago-restaurants-hit-list", lat: null, lng: null, notes: "On their new-restaurant Hit List." },
+  { title: "All Well", category: "Food", area: "Chicago", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-new-chicago-restaurants-hit-list", lat: null, lng: null, notes: "New spot from the Oriole team, on their Hit List." },
+  { title: "Kyoten Next Door", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Top-rated sushi in our neighborhood. Pricey." },
+  { title: "Akahoshi Ramen", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Highly rated ramen close to the Airbnb. Expect a line." },
+  { title: "Omarcito's Latin Cafe", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Casual Latin cafe — sandwiches, coffee." },
+  { title: "Giant", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Small, beloved neighborhood restaurant. Reserve." },
+  { title: "Txa Txa Club", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Quirky all-day cafe." },
+  { title: "Jinsei Motto", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Japanese, recent addition to their Logan Square picks." },
+  { title: "Culebra", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Recent addition to their Logan Square picks." },
+  { title: "Hooligan", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Neighborhood bistro." },
+  { title: "Ramen Wasabi", category: "Food", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/neighborhoods/logan-square", lat: null, lng: null, notes: "Known for tonkotsu." },
+  { title: "Kumiko", category: "Drinks", area: "West Loop", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Upscale cocktail bar with Japanese food." },
+  { title: "Nine Bar", category: "Drinks", area: "Chinatown", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Hidden cocktail bar behind Moon Palace Express." },
+  { title: "Estereo", category: "Drinks", area: "Logan Square", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Garage-door day-drinking bar near us." },
+  { title: "Richard's Bar", category: "Drinks", area: "West Town", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Classic dive — cheap beer, jukebox." },
+  { title: "Delilah's", category: "Drinks", area: "Lincoln Park", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Huge whiskey list, DJs." },
+  { title: "Big Chicks", category: "Drinks", area: "Uptown", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "Fun neighborhood bar." },
+  { title: "The Matchbox", category: "Drinks", area: "River West", source: "Infatuation", url: "https://www.theinfatuation.com/chicago/guides/best-bars-in-chicago", lat: null, lng: null, notes: "One of the tiniest bars in the city." },
+
   // Near the Airbnb (Logan Square / Bucktown / Wicker Park)
   { title: "The 606 trail", category: "Outdoors", area: "Near us", lat: 41.9139, lng: -87.7126, notes: "Elevated old-rail-line trail ~1 mi south of the Airbnb. Great walk/run to Bucktown & Wicker Park." },
   { title: "Lula Cafe", category: "Food", area: "Near us", lat: 41.9277, lng: -87.7069, notes: "Logan Square institution — brunch or dinner. 2537 N Kedzie." },
@@ -18,7 +43,6 @@ window.SUGGESTIONS = [
   { title: "Portillo's", category: "Food", area: "River North", lat: 41.8932, lng: -87.6316, notes: "Italian beef, Chicago dog, chocolate cake shake." },
   { title: "Au Cheval", category: "Food", area: "West Loop", lat: 41.8846, lng: -87.6476, notes: "Famous burger. Put name in early — long waits." },
   { title: "Girl & the Goat", category: "Food", area: "West Loop", lat: 41.8841, lng: -87.6479, notes: "Book ahead. Fulton Market / Randolph St restaurant row." },
-  { title: "Kasama", category: "Food", area: "Ukrainian Village", lat: 41.8999, lng: -87.6758, notes: "Filipino bakery by day (go early)." },
 
   // Downtown sights
   { title: "Millennium Park & The Bean", category: "Sights", area: "Loop", lat: 41.8827, lng: -87.6233, notes: "Cloud Gate, Crown Fountain, Pritzker Pavilion." },

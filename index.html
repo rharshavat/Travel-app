@@ -155,30 +155,33 @@
   <dialog id="editor">
     <form id="editor-form" method="dialog">
       <h3 id="editor-title">Add something</h3>
-      <label>What<input name="title" required placeholder="e.g. Pequod's Pizza"></label>
-      <label>Where (address or place — used for the map)
-        <div class="row"><input name="address" placeholder="Optional"><button type="button" id="geo-btn" class="btn">Find</button></div>
-      </label>
-      <div id="geo-status" class="small muted"></div>
-      <div class="grid2">
-        <label>List
-          <select name="status"><option value="idea">Maybe</option><option value="plan">Plan</option></select>
-        </label>
-        <label>Day
-          <select name="day"></select>
-        </label>
+      <input name="title" required placeholder="What? e.g. Pequod's Pizza" autocomplete="off">
+      <div class="seg" id="status-seg">
+        <button type="button" data-v="idea">💡 Maybe</button>
+        <button type="button" data-v="plan">📅 Plan</button>
       </div>
-      <div class="grid2">
-        <label>Time<input name="time" placeholder="e.g. 7:30 PM"></label>
+      <div id="when" class="when">
+        <div class="label">Day</div>
+        <div class="daybar" id="daybar"></div>
+        <div class="label">Time</div>
+        <div class="wheel-wrap"><div class="wheel" id="wheel"></div></div>
+      </div>
+      <details class="more">
+        <summary>More details</summary>
+        <label>Where (for the map)
+          <div class="row"><input name="address" placeholder="Address — or leave blank, we'll look it up"><button type="button" id="geo-btn" class="btn">Find</button></div>
+        </label>
+        <div id="geo-status" class="small muted"></div>
         <label>Category
           <select name="category">
             <option>Food</option><option>Drinks</option><option>Nightlife</option><option>Sights</option>
             <option>Museum</option><option>Activity</option><option>Outdoors</option><option>Shopping</option><option>Other</option>
           </select>
         </label>
-      </div>
-      <label>Link<input name="url" type="url" placeholder="Reservation, website, tickets…"></label>
-      <label>Notes<textarea name="notes" rows="3" placeholder="Reservation for 6, bring cash, etc."></textarea></label>
+        <label>Link<input name="url" type="url" placeholder="Reservation, website, tickets…"></label>
+        <label>Notes<textarea name="notes" rows="3" placeholder="Reservation for 6, bring cash, etc."></textarea></label>
+      </details>
+      <input type="hidden" name="status"><input type="hidden" name="day"><input type="hidden" name="time">
       <input type="hidden" name="lat"><input type="hidden" name="lng">
       <div class="row end">
         <button type="button" id="editor-delete" class="btn danger" hidden>Delete</button>

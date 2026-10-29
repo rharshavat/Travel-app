@@ -79,7 +79,7 @@ textarea { resize: vertical; }
 .topbar {
   position: sticky; top: 0; z-index: 500; display: flex; justify-content: space-between; align-items: center;
   padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
-  background: var(--ink); color: #fff;
+  background: #0b2545; color: #fff; border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .topbar .muted { color: #b9cde0; }
 .title { font-weight: 800; letter-spacing: .02em; }
@@ -213,3 +213,36 @@ dialog .steps a { color: var(--blue); }
 dialog form > * { min-width: 0; }
 #sync-form .row.end { flex-wrap: wrap; }
 #try-instant { order: 3; flex-basis: 100%; }
+
+/* Quick-add editor */
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.seg button { font: inherit; font-weight: 700; font-size: .9rem; color: var(--muted); background: none; border: 0; border-radius: 9px; padding: 9px; cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.when { display: grid; gap: 6px; }
+.daybar { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.daybar::-webkit-scrollbar { display: none; }
+.daybar button {
+  flex: 1 0 auto; min-width: 58px; font: inherit; font-size: .78rem; font-weight: 600; line-height: 1.15;
+  color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 7px 6px; cursor: pointer;
+}
+.daybar button b { display: block; font-size: 1.05rem; }
+.daybar button.on { background: var(--red); border-color: var(--red); color: #fff; }
+.wheel-wrap { position: relative; height: 180px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.wheel-wrap::before {
+  content: ""; position: absolute; left: 8px; right: 8px; top: 72px; height: 36px; border-radius: 9px;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12); pointer-events: none;
+}
+.wheel-wrap::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(var(--bg), transparent 35%, transparent 65%, var(--bg));
+}
+.wheel { position: relative; height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; padding: 72px 0; overscroll-behavior: contain; }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel div { height: 36px; line-height: 36px; text-align: center; scroll-snap-align: center; font-size: 1.05rem; color: var(--muted); cursor: pointer; }
+.wheel div.on { color: var(--ink); font-weight: 700; }
+details.more { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 10px; }
+details.more[open] { display: grid; }
+details.more summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--muted); }
+details.more > label { margin-top: 8px; }
+.src { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #fdecee; color: #b0001f; vertical-align: 1px; }
+@media (prefers-color-scheme: dark) { .src { background: #3a1820; color: #ff8a9b; } }

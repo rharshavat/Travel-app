@@ -364,6 +364,7 @@
         const m = String(t || "").match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
         if (!m) return 9999;
         let h = +m[1] % 12; if (/pm/i.test(m[3] || "")) h += 12; if (!m[3] && +m[1] < 7) h += 12;
+        if (/am/i.test(m[3] || "") && h < 5) h += 24;   // 1 AM sorts after 11 PM
         return h * 60 + (+m[2] || 0);
       };
       $("#plan-list").innerHTML = DAYS.map((d) => {
@@ -379,17 +380,17 @@
   let suggFilter = "All";
   function renderSuggestions() {
     const taken = new Set(view().items.map((i) => i.title.toLowerCase()));
-    const cats = ["All", "Near us", ...new Set(window.SUGGESTIONS.map((s) => s.category))];
+    const cats = ["All", "Infatuation", "Near us", ...new Set(window.SUGGESTIONS.map((s) => s.category))];
     $("#sugg-filters").innerHTML = cats.map((c) => `<button class="chip ${c === suggFilter ? "on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`).join("");
-    const list = window.SUGGESTIONS.filter((s) => suggFilter === "All" || s.category === suggFilter || (suggFilter === "Near us" && s.area === "Near us"));
+    const list = window.SUGGESTIONS.filter((s) => suggFilter === "All" || s.category === suggFilter || (suggFilter === "Near us" && s.area === "Near us") || (suggFilter === "Infatuation" && s.source === "Infatuation"));
     $("#suggestions").innerHTML = list.map((s) => {
       const i = window.SUGGESTIONS.indexOf(s);
       const added = taken.has(s.title.toLowerCase());
       return `
         <div class="card sugg">
           <div class="item-body">
-            <div class="item-title">${esc(s.title)}</div>
-            <div class="item-meta">${esc(s.category)} · ${esc(s.area)}</div>
+            <div class="item-title">${esc(s.title)} ${s.source ? `<span class="src">${esc(s.source)}</span>` : ""}</div>
+            <div class="item-meta">${esc(s.category)} · ${esc(s.area)}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">guide</a>` : ""}</div>
             ${s.notes ? `<div class="small muted">${esc(s.notes)}</div>` : ""}
           </div>
           ${added ? `<span class="small muted">Added ✓</span>` : `<button class="btn small" data-sugg="${i}">+ Maybe</button>`}
@@ -412,6 +413,24 @@
     };
     queue({ type: "upsert", id: item.id, item });
     toast(`Added to ${item.status === "plan" ? "the plan" : "Maybe"}`);
+    if (item.lat == null) autoPin(item);
+  }
+
+  // Look the place up in the background so it lands on the map without extra typing.
+  const norm = (x) => x.toLowerCase().normalize("NFD").replace(/[^a-z0-9 ]/g, "").replace(/\b(the|chicago)\b/g, "").trim();
+  async function autoPin(item) {
+    try {
+      const hits = await geocode(item.address || item.title);
+      const t = norm(item.title);
+      const hit = item.address ? hits[0] : hits.find((h) => {
+        const n = norm(h.title);
+        return n && t && (n.includes(t) || t.includes(n));
+      });
+      if (!hit) return;
+      const fields = { lat: hit.lat, lng: hit.lng };
+      if (!item.address && hit.address) fields.address = hit.address;
+      queue({ type: "patch", id: item.id, fields });
+    } catch {}
   }
 
   function onItemAction(e) {
@@ -432,18 +451,74 @@
   // ---------- editor ----------
   const editor = $("#editor"), form = $("#editor-form");
   let editingId = null;
-  form.day.innerHTML = DAYS.map((d) => `<option value="${d.value}">${esc(d.label)}</option>`).join("");
+
+  const TIMES = ["Any time"];
+  for (let m = 7 * 60; m <= 26 * 60; m += 15) {
+    const h24 = Math.floor(m / 60) % 24, h = h24 % 12 || 12;
+    TIMES.push(`${h}:${String(m % 60).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`);
+  }
+  const ROW = 36;
+  const wheel = $("#wheel");
+  wheel.innerHTML = TIMES.map((t, i) => `<div data-i="${i}">${t}</div>`).join("");
+
+  function wheelSet(value, smooth = false) {
+    let i = TIMES.indexOf(value);
+    if (i < 0) i = 0;
+    wheel.scrollTo({ top: i * ROW, behavior: smooth ? "smooth" : "auto" });
+    wheelMark(i);
+  }
+  function wheelMark(i) {
+    $$("div", wheel).forEach((d, j) => d.classList.toggle("on", j === i));
+    form.time.value = i === 0 ? "" : TIMES[i];
+  }
+  let wheelTimer;
+  wheel.addEventListener("scroll", () => {
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => wheelMark(Math.max(0, Math.min(TIMES.length - 1, Math.round(wheel.scrollTop / ROW)))), 60);
+  });
+  wheel.addEventListener("click", (e) => {
+    const d = e.target.closest("[data-i]");
+    if (d) wheelSet(TIMES[+d.dataset.i], true);
+  });
+
+  $("#daybar").innerHTML = DAYS.map((d) => {
+    const [dow, mon, num] = d.label.split(" ");
+    return `<button type="button" data-v="${d.value}">${d.value ? `${dow}<b>${num}</b>` : `Not sure<b>?</b>`}</button>`;
+  }).join("");
+  function setDay(v) {
+    form.day.value = v;
+    $$("#daybar button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+  }
+  $("#daybar").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setDay(b.dataset.v); });
+
+  function setStatus(v) {
+    form.status.value = v;
+    $$("#status-seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+    $("#when").hidden = v !== "plan";
+    if (v === "plan") requestAnimationFrame(() => wheelSet(form.time.value || "Any time"));
+  }
+  $("#status-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setStatus(b.dataset.v); });
+
+  function defaultDay() {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+    return DAYS.some((d) => d.value === today) ? today : DAYS[0].value;
+  }
 
   function openEditor(it = {}) {
     editingId = it.id || null;
     $("#editor-title").textContent = editingId ? "Edit" : "Add something";
     $("#editor-delete").hidden = !editingId;
     $("#geo-status").textContent = it.lat != null ? "📍 On the map" : "";
-    for (const k of ["title", "address", "status", "day", "time", "category", "url", "notes", "lat", "lng"]) {
-      form[k].value = it[k] ?? (k === "status" ? "idea" : k === "category" ? "Food" : "");
+    for (const k of ["title", "address", "category", "url", "notes", "lat", "lng", "time"]) {
+      form[k].value = it[k] ?? (k === "category" ? "Other" : "");
     }
+    $("details.more", form).open = !!(it.notes || it.url);
+    const wasPlan = editingId && view().items.find((i) => i.id === editingId)?.status === "plan";
+    setDay(it.day || (wasPlan ? "" : defaultDay()));
     editor.showModal();
-    if (!editingId) form.title.focus();
+    setStatus(it.status || "idea");
+    wheelSet(form.time.value || "Any time");
+    if (!editingId && !it.title) form.title.focus();
   }
 
   async function geocode(q) {
@@ -481,8 +556,11 @@
     const f = Object.fromEntries(new FormData(form));
     f.lat = f.lat === "" ? null : +f.lat;
     f.lng = f.lng === "" ? null : +f.lng;
-    if (editingId) queue({ type: "upsert", id: editingId, item: { ...f, id: editingId } });
-    else addItem(f);
+    if (f.status !== "plan") { f.day = ""; f.time = ""; }
+    if (editingId) {
+      queue({ type: "upsert", id: editingId, item: { ...f, id: editingId } });
+      if (f.lat == null) autoPin({ ...f, id: editingId });
+    } else addItem(f);
     editor.close();
   });
   $("#editor-cancel").addEventListener("click", () => editor.close());
@@ -632,7 +710,7 @@
     const sg = e.target.closest("[data-sugg]");
     if (sg) {
       const s = window.SUGGESTIONS[+sg.dataset.sugg];
-      addItem({ title: s.title, category: s.category, notes: s.notes, lat: s.lat, lng: s.lng, status: "idea" });
+      addItem({ title: s.title, category: s.category, notes: s.notes, url: s.url || "", lat: s.lat, lng: s.lng, status: "idea" });
       if (map) map.closePopup();
       return;
     }
