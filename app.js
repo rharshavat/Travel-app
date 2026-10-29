@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "17";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "18";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -488,9 +488,11 @@
     try {
       const hits = await geocode(item.address || item.title);
       const t = norm(item.title);
-      const hit = item.address ? hits[0] : hits.find((h) => {
+      const exact = item.address && /\d/.test(item.address);
+      const want = item.address && !exact ? norm(item.address.split(",")[0]) : t;
+      const hit = exact ? hits[0] : hits.find((h) => {
         const n = norm(h.title);
-        return n && t && (n.includes(t) || t.includes(n));
+        return n && want && (n.includes(want) || want.includes(n));
       });
       if (!hit) return;
       const fields = { lat: hit.lat, lng: hit.lng };
@@ -949,11 +951,97 @@
 
   // ---------- bulk add ----------
   const bulk = $("#bulk-dialog");
-  const urlsIn = (text) => [...new Set((String(text).match(/https?:\/\/[^\s<>"')\]]+/g) || []).map((u) => u.replace(/[.,;!]+$/, "")))];
+  const URL_RE = /https?:\/\/[^\s<>"')\]]+/g;
+  const tidyUrl = (u) => u.replace(/[.,;!]+$/, "");
+  const urlsIn = (text) => [...new Set((String(text).match(URL_RE) || []).map(tidyUrl))];
+
+  // ----- reading event details out of pasted text (e.g. copied from an RA or Instagram page) -----
+  const WEEKDAYS = { thu: "2026-10-29", fri: "2026-10-30", sat: "2026-10-31", sun: "2026-11-01", mon: "2026-11-02" };
+  const LABEL_LINE = /^(venue|date|time|when|where|location|lineup|line-up|promoter|promoters|cost|price|tickets?|buy tickets|get tickets|interested|going|share|save|follow|doors|age|min(imum)? age|\d+\+|ra pick|event|events|details|about|info|more info|see more|show more|attending|report|admission|rsvp)\s*:?\s*$/i;
+  const STREET = /^\d{1,5}\s+[NSEW]?\.?\s*[\w'. -]+\b(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|pl|place|ln|lane|way|ct|court|pkwy|parkway|ter|terrace|sq|square)\b\.?(,|\s|$)/i;
+  const PRICEISH = /^(\$|free\b|€|£|sold out|from \$|\d+\s*(going|interested|attending))/i;
+  function parseDetails(text) {
+    const lines = String(text).split(/\n+/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (!lines.length) return {};
+    const out = { ...findWhen(lines.join(" \n ")) };
+    if (!out.day) {
+      const wd = lines.join(" ").match(/\b(thu|fri|sat|sun|mon)(?:\.|rs?day|day|urday)?\b/i);
+      if (wd) out.day = WEEKDAYS[wd[1].toLowerCase()];
+    }
+    const isDateLine = (l) => {
+      const w = findWhen(l);
+      return ((w.day || w.time) && l.length < 60 && !/\s(at|@)\s/i.test(l)) || (/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+\d/i.test(l) && l.length < 40);
+    };
+    // Venue: the line after a "Venue"/"Where" label, else a line before a street address.
+    for (let i = 0; i < lines.length; i++) {
+      if (/^(venue|where|location)\s*:?\s*$/i.test(lines[i]) && lines[i + 1]) { out.venue = lines[i + 1]; break; }
+      const inline = lines[i].match(/^(venue|where|location)\s*:\s*(.+)$/i);
+      if (inline) { out.venue = inline[2]; break; }
+    }
+    const addrIdx = lines.findIndex((l) => STREET.test(l));
+    if (addrIdx >= 0) {
+      out.street = lines[addrIdx];
+      if (!out.venue && addrIdx > 0 && !LABEL_LINE.test(lines[addrIdx - 1]) && !isDateLine(lines[addrIdx - 1])) out.venue = lines[addrIdx - 1];
+    }
+    // Title: the first line that isn't a label, date, price, venue or address.
+    const title = lines.find((l) => !LABEL_LINE.test(l) && !isDateLine(l) && !PRICEISH.test(l) && l !== out.venue && l !== out.street && !/^https?:/.test(l) && l.length >= 3 && l.length <= 120);
+    if (title) {
+      const at = title.match(/^(.*\S)\s+(?:at|@)\s+(.+)$/i);
+      if (at && !out.venue) { out.title = at[1]; out.venue = at[2]; } else out.title = title.replace(/^RA:\s*/i, "");
+      // Date and time words belong in the day/time fields, not the name.
+      const bare = out.title
+        .replace(/\s+(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?(?=\s*($|[\d·|,–-]))/gi, "")
+        .replace(/\b(oct(ober)?|nov(ember)?)\.?\s*\d{1,2}(st|nd|rd|th)?\b|\b\d{1,2}(st|nd|rd|th)?\s+(oct(ober)?|nov(ember)?)\b/gi, "")
+        .replace(/\b\d{1,2}(:\d{2})?\s*[ap]\.?m\.?(\s*[-–]\s*\d{1,2}(:\d{2})?\s*[ap]\.?m\.?)?/gi, "")
+        .replace(/\s*[·|,–-]\s*$/, "").replace(/\s{2,}/g, " ").trim();
+      if (bare.length >= 3) out.title = bare;
+    }
+    out.address = out.street ? [out.venue, out.street].filter(Boolean).join(", ") : out.venue ? (/chicago/i.test(out.venue) ? out.venue : `${out.venue}, Chicago`) : "";
+    const rest = lines.filter((l) => l !== title && l !== out.venue && l !== out.street && !LABEL_LINE.test(l) && !isDateLine(l));
+    out.notes = clip(rest.join(" · "), 400);
+    return out;
+  }
+
+  // Split a paste into events: each link with the text that goes with it, plus text-only events that have a date.
+  function bulkEntries(raw) {
+    const blocks = String(raw).replace(/\r/g, "").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+    const parts = [];   // { url, text }
+    for (const b of blocks) {
+      const urls = (b.match(URL_RE) || []).map(tidyUrl);
+      if (!urls.length) { parts.push({ url: null, text: b }); continue; }
+      if (urls.length === 1) { parts.push({ url: urls[0], text: b.replace(URL_RE, " ").trim() }); continue; }
+      // Several links in one block: each link owns the text after it (text before the first goes to the first).
+      const pieces = b.split(URL_RE);
+      urls.forEach((u, i) => parts.push({ url: u, text: ((i === 0 ? pieces[0] + "\n" : "") + (pieces[i + 1] || "")).trim() }));
+    }
+    // A text-only block belongs to a neighbouring link that came without text (next one first, then previous).
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].url || !parts[i].text) continue;
+      const next = parts[i + 1], prev = parts[i - 1];
+      const host = next && next.url && !next.text ? next : prev && prev.url && !prev.text ? prev : null;
+      if (host) { host.text = parts[i].text; parts[i].text = ""; }
+    }
+    // Text that has no date, time or venue (like "check these out!") isn't event details — ignore it.
+    for (const p of parts) {
+      if (!p.url || !p.text) continue;
+      const d = parseDetails(p.text);
+      if (!(d.day || d.time || d.venue || d.street)) p.text = "";
+    }
+    const seen = new Set();
+    return parts.filter((p) => {
+      if (p.url) { if (seen.has(p.url)) return false; seen.add(p.url); return true; }
+      if (!p.text) return false;
+      const d = parseDetails(p.text);
+      return d.title && (d.day || d.time);   // stray text only counts if it looks like an event
+    });
+  }
+
   function bulkCount() {
-    const n = urlsIn($("#bulk-text").value).length;
-    $("#bulk-go").textContent = n ? `Add ${n} link${n === 1 ? "" : "s"}` : "Add all";
+    const entries = bulkEntries($("#bulk-text").value);
+    const n = entries.length, withText = entries.filter((e) => e.text).length;
+    $("#bulk-go").textContent = n ? `Add ${n} event${n === 1 ? "" : "s"}` : "Add all";
     $("#bulk-go").disabled = !n;
+    $("#bulk-hint").textContent = withText ? `📝 Using the text you pasted for ${withText} of them` : "";
   }
   $("#bulk-text").addEventListener("input", bulkCount);
   $("#bulk-paste").addEventListener("click", async () => {
@@ -974,11 +1062,11 @@
   }
   let bulkFailed = [];
   const shortUrl = (u) => u.replace(/^https?:\/\/(www\.)?/, "");
-  function bulkRow(i, p, title) {
+  function bulkRow(i, p, title, fromText = false) {
     const li = $(`[data-b="${i}"]`, $("#bulk-log"));
     if (!li) return;
     li.innerHTML = p.ok
-      ? `✅ <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found — set it with 📅</span>`}`
+      ? `${fromText ? "📝" : "✅"} <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found — set it with 📅</span>`}`
       : `⚠️ <b>${esc(title)}</b> <span class="muted">· saved, but the site didn't share details</span>`;
   }
   function setRetry() {
@@ -987,30 +1075,50 @@
   }
   $("#bulk-go").addEventListener("click", async () => {
     const have = new Set(view().items.flatMap((i) => [i.url, i.shareUrl]).filter(Boolean).map((u) => u.replace(/\/+$/, "")));
-    const urls = urlsIn($("#bulk-text").value);
+    const entries = bulkEntries($("#bulk-text").value);
     const log = $("#bulk-log");
     $("#bulk-text").hidden = true;
     $("#bulk-go").hidden = true;
     $("#bulk-paste").hidden = true;
+    $("#bulk-hint").textContent = "";
     $("#bulk-cancel").textContent = "Close";
-    log.innerHTML = urls.map((u, i) => `<li data-b="${i}"><span class="muted">⏳ ${esc(shortUrl(u).slice(0, 60))}</span></li>`).join("");
+    const label = (e) => e.url ? shortUrl(e.url).slice(0, 60) : clip(e.text.split("\n")[0], 60);
+    log.innerHTML = entries.map((e, i) => `<li data-b="${i}"><span class="muted">⏳ ${esc(label(e))}</span></li>`).join("");
     bulkFailed = [];
     let added = 0;
     // One at a time: the free preview services turn away simultaneous requests.
-    for (let i = 0; i < urls.length; i++) {
-      const u = urls[i];
-      if (have.has(u.replace(/\/+$/, ""))) {
+    for (let i = 0; i < entries.length; i++) {
+      const { url: u, text } = entries[i];
+      if (u && have.has(u.replace(/\/+$/, ""))) {
         $(`[data-b="${i}"]`, log).innerHTML = `<span class="muted">↩︎ Already on the list · ${esc(shortUrl(u).slice(0, 50))}</span>`;
         continue;
       }
-      $(`[data-b="${i}"]`, log).innerHTML = `<span class="muted">🔎 Reading ${esc(shortUrl(u).slice(0, 55))}…</span>`;
-      const p = await previewLink(u);
-      const title = p.title || shortUrl(u).split(/[/?#]/)[0];
-      const item = addItem({ ...p, title, kind: p.kind || "event", category: p.category || "Nightlife", status: "idea" }, { quiet: true });
+      const t = text ? parseDetails(text) : {};
+      let p = { ok: false };
+      // Only ask the preview services for what the pasted text didn't already tell us.
+      if (u && !(t.title && t.day)) {
+        $(`[data-b="${i}"]`, log).innerHTML = `<span class="muted">🔎 Reading ${esc(shortUrl(u).slice(0, 55))}…</span>`;
+        p = await previewLink(u);
+      }
+      const fromText = !!(t.title || t.day);
+      const merged = {
+        ...p,
+        url: p.url || u || "",
+        title: (p.ok && p.title) || t.title || (u ? shortUrl(u).split(/[/?#]/)[0] : "Event"),
+        day: p.day || t.day || "",
+        time: p.time || t.time || "",
+        address: p.address || t.address || "",
+        notes: p.notes || t.notes || "",
+        kind: "event",
+        category: p.category || "Nightlife",
+        status: "idea",
+        ok: p.ok || fromText,
+      };
+      const item = addItem(merged, { quiet: true });
       added++;
-      bulkRow(i, p, title);
-      if (!p.ok) bulkFailed.push({ i, url: u, id: item.id });
-      await sleep(400);
+      bulkRow(i, merged, merged.title, fromText && !p.ok);
+      if (!merged.ok && u) bulkFailed.push({ i, url: u, id: item.id });
+      if (u && !(t.title && t.day)) await sleep(400);
     }
     setRetry();
     toast(`Added ${added} event${added === 1 ? "" : "s"} to Maybe`);
