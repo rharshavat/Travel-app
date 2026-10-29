@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "19";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "20";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -42,12 +42,15 @@
   const dayLabel = (v) => (DAYS.find((d) => d.value === v) || DAYS[DAYS.length - 1]).label;
 
   let toastTimer;
-  function toast(msg) {
+  let toastAction = null;
+  function toast(msg, action) {
     const t = $("#toast");
     t.textContent = msg;
+    toastAction = action || null;
+    if (action) t.insertAdjacentHTML("beforeend", ` <button class="toast-btn">${esc(action.label)}</button>`);
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (t.hidden = true), 2600);
+    toastTimer = setTimeout(() => (t.hidden = true), action ? 6000 : 2600);
   }
   async function copy(text, what = "Copied") {
     try { await navigator.clipboard.writeText(text); toast(`${what} ✓`); }
@@ -326,34 +329,58 @@
   }
 
   // ---------- rendering: lists ----------
+  const CAT_ICON = { Food: "🍽", Drinks: "🍸", Nightlife: "🎶", Sights: "🏙", Museum: "🖼", Activity: "🎟", Outdoors: "🌳", Shopping: "🛍" };
+  const openIds = new Set();   // cards expanded on this phone
+  let swipedId = null;         // card swiped open to show Delete
+
+  // Compact by default: one tap opens details and actions, swipe left to delete.
   function itemCard(it) {
     const votes = it.votes || [];
     const mine = votes.includes(ME);
-    const when = it.status === "plan" ? it.time : [it.day ? dayLabel(it.day) : "", it.time].filter(Boolean).join(" ");
-    const meta = [it.category, when ? (it.status === "plan" ? when : `📅 ${when}`) : "", it.addedBy ? `added by ${it.addedBy}` : ""].filter(Boolean).join(" · ");
+    const open = openIds.has(it.id);
+    const when = it.status === "plan" ? it.time : [it.day ? dayLabel(it.day).replace(" 🎃", "") : "", it.time].filter(Boolean).join(" ");
+    const dist = distLabel(it);
+    const summary = [when, dist.replace(/ · .*$/, ""), !when ? it.category : ""].filter(Boolean).join(" · ");
     return `
-      <div class="card item ${it.status} ${it.done ? "done" : ""}" data-id="${esc(it.id)}">
-        <div class="bar"></div>
-        ${it.image ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}
-        <div class="item-body">
-          <div class="item-title">${esc(it.title)}</div>
-          <div class="item-meta">${esc(meta)}${it.address ? `<br>${esc(it.address)}` : ""}${distLabel(it) ? `<br><b class="dist">${esc(distLabel(it))}</b>` : ""}</div>
-          ${it.notes ? `<div class="item-notes">${esc(it.notes)}</div>` : ""}
-          <div class="item-actions">
-            <button class="btn small vote ${mine ? "on" : ""}" data-act="vote" title="${esc(votes.join(", ") || "No votes yet")}">👍 ${votes.length || ""}</button>
-            ${it.status === "idea"
-              ? `<button class="btn small" data-act="when">📅 ${it.day || it.time ? "Change time" : "When"}</button>
-                 <button class="btn small" data-act="toplan">→ Plan</button>`
-              : `<button class="btn small" data-act="done">${it.done ? "Undo" : "✓ Done"}</button>
-                 <button class="btn small" data-act="toidea">→ Maybe</button>`}
-            <a class="btn small" href="${esc(gmapsSearch(it))}" target="_blank" rel="noopener">Maps</a>
-            ${it.url ? `<a class="btn small" href="${esc(it.url)}" target="_blank" rel="noopener">Link</a>` : ""}
-            <button class="btn small" data-act="edit">Edit</button>
+      <div class="swipe" data-id="${esc(it.id)}">
+        <button class="swipe-del" data-act="delete">🗑<span>Delete</span></button>
+        <div class="card item compact ${it.status} ${it.done ? "done" : ""} ${open ? "open" : ""} ${swipedId === it.id ? "swiped" : ""}" data-id="${esc(it.id)}">
+          <div class="bar"></div>
+          ${it.image ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="thumb ph">${CAT_ICON[it.category] || "📍"}</div>`}
+          <div class="item-body">
+            <div class="row-top">
+              <div class="item-title">${esc(it.title)}</div>
+              <button class="vote-pill ${mine ? "on" : ""}" data-act="vote" aria-label="Vote">👍${votes.length ? " " + votes.length : ""}</button>
+            </div>
+            <div class="item-meta one-line">${esc(summary || "Tap for details")}</div>
+            ${open ? `
+              <div class="details">
+                ${it.address ? `<div class="item-meta">📍 ${esc(it.address)}</div>` : ""}
+                ${dist ? `<div class="item-meta"><b class="dist">${esc(dist)}</b></div>` : ""}
+                ${it.notes ? `<div class="item-notes">${esc(it.notes)}</div>` : ""}
+                <div class="item-actions">
+                  ${it.status === "idea"
+                    ? `<button class="btn small" data-act="when">📅 ${it.day || it.time ? "Change time" : "When"}</button>
+                       <button class="btn small" data-act="toplan">→ Plan</button>`
+                    : `<button class="btn small" data-act="done">${it.done ? "Undo" : "✓ Done"}</button>
+                       <button class="btn small" data-act="toidea">→ Maybe</button>`}
+                  <a class="btn small" href="${esc(gmapsSearch(it))}" target="_blank" rel="noopener">Maps</a>
+                  ${it.url ? `<a class="btn small" href="${esc(it.url)}" target="_blank" rel="noopener">Link</a>` : ""}
+                  <button class="btn small" data-act="edit">Edit</button>
+                </div>
+                <div class="item-meta">${[it.category, it.addedBy ? `added by ${it.addedBy}` : "", votes.length ? `👍 ${votes.join(", ")}` : ""].filter(Boolean).map(esc).join(" · ")}</div>
+              </div>` : ""}
           </div>
-          ${votes.length ? `<div class="item-meta" style="margin-top:6px">👍 ${esc(votes.join(", "))}</div>` : ""}
         </div>
       </div>`;
   }
+
+  // Day chips that jump to a day's heading in a long list.
+  function dayJump(prefix, days) {
+    if (days.length < 2) return "";
+    return `<div class="jumpbar">${days.map((d) => `<button class="chip" data-jump="${prefix}-${d || "none"}">${d ? esc(dayLabel(d).replace(" 🎃", "").replace(/^(\w+) \w+ (\d+)$/, "$1 $2")) : "No day"}</button>`).join("")}</div>`;
+  }
+  const dayHead = (prefix, d, label) => `<div class="day-head" id="${prefix}-${d || "none"}">${esc(label)}</div>`;
 
   // ---------- distance from the Airbnb ----------
   function milesFromHome(p) {
@@ -411,16 +438,17 @@
     if (!plan.length) {
       $("#plan-list").innerHTML = `<div class="empty">Nothing locked in yet.<br>Add something, or promote an idea from the Maybe list.</div>`;
     } else {
-      $("#plan-list").innerHTML = DAYS.map((d) => {
+      const planDays = DAYS.map((d) => d.value).filter((v) => plan.some((i) => (i.day || "") === v));
+      $("#plan-list").innerHTML = dayJump("pd", planDays) + DAYS.map((d) => {
         const list = plan.filter((i) => (i.day || "") === d.value).sort((a, b) => timeKey(a.time) - timeKey(b.time));
-        return list.length ? `<div class="day-head">${esc(d.label)}</div>${list.map(itemCard).join("")}` : "";
+        return list.length ? dayHead("pd", d.value, d.label) + list.map(itemCard).join("") : "";
       }).join("");
     }
     const events = ideas.filter(isEvent).sort(byDate);
     const places = ideas.filter((i) => !isEvent(i));
     let lastDay = null;
     const eventHtml = events.map((it) => {
-      const head = it.day !== lastDay ? `<div class="day-head">${esc(dayLabel(it.day || ""))}</div>` : "";
+      const head = it.day !== lastDay ? dayHead("ed", it.day, dayLabel(it.day || "")) : "";
       lastDay = it.day;
       return head + itemCard(it);
     }).join("");
@@ -432,7 +460,7 @@
     const total = maybeView === "events" ? nEvents : nPlaces;
     const hiddenHere = total - shown.length;
     $("#ideas-list").innerHTML = (maybeView === "events"
-      ? (events.length ? eventHtml : `<div class="empty">${nEvents ? "No events that close." : "No events yet.<br>Tap 🔗 Link for one, or <b>Bulk add</b> to paste a bunch at once."}</div>`)
+      ? (events.length ? dayJump("ed", [...new Set(events.map((e) => e.day || ""))]) + eventHtml : `<div class="empty">${nEvents ? "No events that close." : "No events yet.<br>Tap 🔗 Link for one, or <b>Bulk add</b> to paste a bunch at once."}</div>`)
       : (places.length ? places.map(itemCard).join("") : `<div class="empty">${nPlaces ? "Nothing that close yet." : "No places yet. Search below or tap + on a suggestion."}</div>`))
       + (hiddenHere ? `<div class="small muted" style="margin:-4px 0 8px">${hiddenHere} more farther away or without a location.</div>` : "");
     $("#find-section").hidden = maybeView !== "places";
@@ -463,8 +491,10 @@
     }).join("");
   }
 
+  let sw = null, renderLater = false;
   function render() {
     if (!TRIP) return;
+    if (sw?.active) { renderLater = true; return; }
     renderLists();
     if (mapReady) renderMap();
   }
@@ -501,12 +531,31 @@
     } catch {}
   }
 
-  function onItemAction(e) {
-    const btn = e.target.closest("[data-act]");
-    if (!btn) return;
-    const id = btn.closest("[data-id]").dataset.id;
+  let suppressClick = false;
+  function deleteItem(id) {
     const it = view().items.find((i) => i.id === id);
     if (!it) return;
+    swipedId = null;
+    openIds.delete(id);
+    queue({ type: "delete", id });
+    toast(`Deleted “${clip(it.title, 30)}”`, { label: "Undo", fn: () => queue({ type: "upsert", id, item: it }) });
+  }
+
+  function onItemAction(e) {
+    if (suppressClick) { e.preventDefault(); return; }
+    const card = e.target.closest("[data-id]");
+    if (!card) return;
+    const id = card.dataset.id;
+    const it = view().items.find((i) => i.id === id);
+    if (!it) return;
+    const btn = e.target.closest("[data-act]");
+    if (!btn) {
+      if (e.target.closest("a")) return;
+      if (swipedId) { swipedId = null; renderLists(); return; }   // a tap closes an open swipe
+      openIds.has(id) ? openIds.delete(id) : openIds.add(id);
+      renderLists();
+      return;
+    }
     switch (btn.dataset.act) {
       case "vote": queue({ type: "vote", id, name: ME, on: !(it.votes || []).includes(ME) }); break;
       case "toplan": openEditor({ ...it, status: "plan" }); break;
@@ -514,7 +563,49 @@
       case "done": queue({ type: "patch", id, fields: { done: !it.done } }); break;
       case "edit": openEditor(it); break;
       case "when": openEditor(it); $("#when").scrollIntoView({ block: "center" }); break;
+      case "delete": deleteItem(id); break;
     }
+  }
+
+  // Swipe a card left to reveal Delete; a long swipe deletes straight away (with Undo).
+  const OPEN_X = -96, DELETE_X = -190;
+  function swipeStart(e) {
+    const card = e.target.closest(".item.compact");
+    if (!card || (e.pointerType === "mouse" && e.button !== 0) || e.target.closest(".swipe-del")) return;
+    sw = { card, id: card.dataset.id, x: e.clientX, y: e.clientY, pid: e.pointerId, base: card.classList.contains("swiped") ? OPEN_X : 0, pos: 0, active: false };
+  }
+  function swipeMove(e) {
+    if (!sw || e.pointerId !== sw.pid) return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (!sw.active) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }   // it's a scroll
+      if (Math.abs(dx) < 10) return;
+      sw.active = true;
+      if (swipedId && swipedId !== sw.id) { swipedId = null; $$(".item.swiped").forEach((c) => { c.classList.remove("swiped"); c.style.transform = ""; }); }
+      sw.card.style.transition = "none";
+      sw.card.parentElement.classList.add("dragging");
+      try { sw.card.setPointerCapture(sw.pid); } catch {}
+    }
+    sw.pos = Math.min(0, Math.max(-240, sw.base + dx));
+    sw.card.style.transform = `translateX(${sw.pos}px)`;
+    sw.card.parentElement.classList.toggle("armed", sw.pos < DELETE_X);
+  }
+  function swipeEnd(e) {
+    if (!sw || e.pointerId !== sw.pid) return;
+    const s0 = sw;
+    sw = null;
+    if (!s0.active) return;
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 60);
+    s0.card.style.transition = "";
+    s0.card.parentElement.classList.remove("dragging");
+    if (s0.pos < DELETE_X) { s0.card.style.transform = "translateX(-110%)"; setTimeout(() => deleteItem(s0.id), 160); return; }
+    const open = s0.pos < OPEN_X / 2;
+    swipedId = open ? s0.id : null;
+    s0.card.classList.toggle("swiped", open);
+    s0.card.style.transform = "";
+    s0.card.parentElement.classList.remove("armed");
+    if (renderLater) { renderLater = false; setTimeout(render, 250); }
   }
 
   // ---------- editor ----------
@@ -1212,6 +1303,7 @@
     $("#app").hidden = false;
     renderStay();
     renderCountdown();
+    requestAnimationFrame(setTopbarH);
     setInterval(renderCountdown, 60000);
     loadWeather();
     render();
@@ -1290,6 +1382,8 @@
     if (so) { sortBy = so.dataset.sort; renderLists(); return; }
     const wi = e.target.closest("[data-within]");
     if (wi) { within = +wi.dataset.within; renderLists(); return; }
+    const jp = e.target.closest("[data-jump]");
+    if (jp) { document.getElementById(jp.dataset.jump)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     const f = e.target.closest("[data-filter]");
     if (f) { suggFilter = f.dataset.filter; renderSuggestions(); return; }
     if (e.target.closest("#copy-invite")) {
@@ -1305,8 +1399,19 @@
       if (n && n.trim()) { ME = n.trim(); store.set(LS.name, ME); renderStay(); renderCountdown(); render(); }
     }
   });
-  $("#plan-list").addEventListener("click", onItemAction);
-  $("#ideas-list").addEventListener("click", onItemAction);
+  for (const list of [$("#plan-list"), $("#ideas-list")]) {
+    list.addEventListener("click", onItemAction);
+    list.addEventListener("pointerdown", swipeStart);
+    list.addEventListener("pointermove", swipeMove);
+    list.addEventListener("pointerup", swipeEnd);
+    list.addEventListener("pointercancel", swipeEnd);
+  }
+  $("#toast").addEventListener("click", (e) => {
+    if (e.target.closest(".toast-btn") && toastAction) { toastAction.fn(); toastAction = null; $("#toast").hidden = true; }
+  });
+  // Keep the sticky day bar just under the top bar, whatever the phone's notch height.
+  const setTopbarH = () => document.documentElement.style.setProperty("--topbar-h", `${$(".topbar").offsetHeight}px`);
+  window.addEventListener("resize", setTopbarH);
   $$(".add-btn").forEach((b) => b.addEventListener("click", () => openEditor({ status: b.dataset.status })));
   $("#bulk-btn").addEventListener("click", openBulk);
   $$(".link-btn").forEach((b) => b.addEventListener("click", () => { openEditor({ status: b.dataset.status }); $("#link-in").focus(); }));
