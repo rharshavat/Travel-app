@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "14";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "15";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -579,6 +579,7 @@
     $("#geo-status").textContent = it.lat != null ? "📍 On the map" : "";
     $("#link-in").value = "";
     $("#link-status").hidden = true;
+    $("#reread").hidden = !(editingId && it.url);
     $("#link-img").hidden = !it.image;
     if (it.image) $("#link-img").src = it.image;
     form.kind.value = it.kind || "";
@@ -783,7 +784,7 @@
         if (res.status === 429 || res.status >= 500) { await sleep(1500 * (attempt + 1)); continue; }
         const body = await res.json();
         const d = body.status === "success" ? body.data || {} : {};
-        return { title: d.title, description: d.description, image: d.image?.url };
+        return { title: d.title, description: d.description, image: d.image?.url, finalUrl: d.url };
       }
       return {};
     },
@@ -793,7 +794,7 @@
       if (!res.ok) return {};
       const d = (await res.json()).data || {};
       const text = String(d.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-      return { title: d.title, description: d.description || clip(text.replace(/\s+/g, " "), 400), image: d.images ? Object.values(d.images)[0] : "", extra: text.slice(0, 4000) };
+      return { title: d.title, description: d.description || clip(text.replace(/\s+/g, " "), 400), image: d.images ? Object.values(d.images)[0] : "", extra: text.slice(0, 4000), finalUrl: d.url };
     },
     async (url) => {
       const res = await fetch(`https://api.dub.co/metatags?url=${encodeURIComponent(url)}`);
@@ -802,19 +803,32 @@
       return { title: d.title, description: d.description, image: d.image };
     },
   ];
+  // Titles that mean we got a gate, redirect or app-download page instead of the event.
+  const JUNK_TITLE = /^(just a moment|attention required|access denied|404|page not found|redirecting|loading|open in app|get the .*app|download .*|(dice|dice\.fm|partiful|eventbrite|ticketmaster|luma|ra|resident advisor)(\s*[|:–-].*)?)$/i;
+  const SHORT_LINK = /^https?:\/\/(link\.dice\.fm|dice\.link|evt\.to|eventbrite\.com\/e\/?$|bit\.ly|tinyurl\.com|t\.co|lnkd\.in|ow\.ly|app\.link|[a-z0-9-]+\.app\.link|go\.dice\.fm)\//i;
   async function fetchMeta(url) {
+    let finalUrl = "";
     for (const get of PREVIEWERS) {
       try {
         const d = await get(url);
-        if (d && d.title && !/^(just a moment|attention required|access denied|404|page not found)/i.test(d.title)) return d;
+        if (d?.finalUrl && d.finalUrl !== url && !finalUrl) finalUrl = d.finalUrl;
+        if (d && d.title && !JUNK_TITLE.test(d.title.trim())) return { ...d, finalUrl: d.finalUrl || finalUrl };
       } catch {}
     }
-    return {};
+    return { finalUrl };
   }
 
   // Everything we can learn about a link from its share preview.
   async function previewLink(url) {
-    const meta = await fetchMeta(url);
+    const shareUrl = url;
+    let meta = await fetchMeta(url);
+    // Share links (link.dice.fm and friends) forward to the real page — read that one instead.
+    const real = meta.finalUrl && /^https?:\/\//.test(meta.finalUrl) && meta.finalUrl.replace(/[?#].*$/, "") !== url.replace(/[?#].*$/, "") ? meta.finalUrl : "";
+    if (real && (!meta.title || SHORT_LINK.test(url))) {
+      const again = await fetchMeta(real);
+      if (again.title || !meta.title) meta = { ...again, finalUrl: real };
+      url = real.replace(/[?&](sharer_id|utm_[a-z]+|aff|ref)=[^&#]*/g, "").replace(/\?$/, "");
+    }
     const data = { title: meta.title, description: meta.description, image: { url: meta.image } };
     const { title, venue } = cleanTitle(data.title, url);
     let when = findWhen(`${data.title || ""} ${data.description || ""} ${decodeURIComponent(url)}`);
@@ -826,13 +840,13 @@
       notes: clip(data.description || "", 500),
       image: data.image?.url || "",
       address: venue ? (/chicago/i.test(venue) ? venue : `${venue}, Chicago`) : "",
-      url,
+      url, shareUrl: shareUrl !== url ? shareUrl : "",
       kind: event ? "event" : "",
       category: event ? "Nightlife" : "",
     };
   }
 
-  async function importLink(raw) {
+  async function importLink(raw, { force = false } = {}) {
     const url = (raw || "").trim().match(/https?:\/\/\S+/)?.[0];
     const st = $("#link-status");
     if (!url) return;
@@ -840,6 +854,11 @@
     st.textContent = "Reading the link…";
     form.url.value = url;
     const p = await previewLink(url);
+    if (p.ok) form.url.value = p.url;
+    if (force && p.ok) {
+      for (const k of ["title", "notes", "address"]) if (p[k]) form[k].value = "";
+      if (p.address) { form.lat.value = ""; form.lng.value = ""; }
+    }
     if (p.kind) form.kind.value = p.kind;
     if (p.category && (!form.category.value || form.category.value === "Other")) form.category.value = p.category;
     if (p.title && !form.title.value.trim()) form.title.value = p.title;
@@ -858,6 +877,7 @@
       : "Couldn't read that link — saved it, just type a name.";
     if (!form.title.value.trim()) form.title.focus();
   }
+  $("#reread").addEventListener("click", () => importLink(form.url.value, { force: true }));
   $("#link-in").addEventListener("input", (e) => { if (/https?:\/\/\S+\.\S+/.test(e.target.value)) importLink(e.target.value); });
   $("#link-paste").addEventListener("click", async () => {
     try {
@@ -906,7 +926,7 @@
     $("#bulk-retry").textContent = `↻ Retry ${bulkFailed.length} that didn't work`;
   }
   $("#bulk-go").addEventListener("click", async () => {
-    const have = new Set(view().items.map((i) => (i.url || "").replace(/\/+$/, "")));
+    const have = new Set(view().items.flatMap((i) => [i.url, i.shareUrl]).filter(Boolean).map((u) => u.replace(/\/+$/, "")));
     const urls = urlsIn($("#bulk-text").value);
     const log = $("#bulk-log");
     $("#bulk-text").hidden = true;

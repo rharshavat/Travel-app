@@ -12,7 +12,7 @@
   <title>Chicago Weekend</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✶</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <!-- Lock screen -->
@@ -172,6 +172,7 @@
         <input id="link-in" type="url" inputmode="url" placeholder="🔗 Paste an Eventbrite, Partiful or any link" autocomplete="off">
         <button type="button" id="link-paste" class="btn">Paste</button>
       </div>
+      <button type="button" id="reread" class="btn small" hidden>↻ Refresh details from its link</button>
       <div id="link-status" class="small muted" hidden></div>
       <img id="link-img" class="link-img" alt="" referrerpolicy="no-referrer" hidden>
       <input name="title" required placeholder="What? e.g. Pequod's Pizza" autocomplete="off">
@@ -259,7 +260,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="places.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="places.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
