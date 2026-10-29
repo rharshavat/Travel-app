@@ -259,3 +259,4 @@ details.more > label { margin-top: 8px; }
   display: block; width: calc(100% - 32px); max-width: 720px; margin: 12px auto 0; padding: 12px 16px;
   font: inherit; font-weight: 700; color: #04263a; background: var(--blue); border: 0; border-radius: var(--radius); cursor: pointer;
 }
+.dist { font-weight: 600; color: var(--ink); }

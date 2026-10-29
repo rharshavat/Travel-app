@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "10";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "11";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -337,7 +337,7 @@
         ${it.image ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}
         <div class="item-body">
           <div class="item-title">${esc(it.title)}</div>
-          <div class="item-meta">${esc(meta)}${it.address ? `<br>${esc(it.address)}` : ""}</div>
+          <div class="item-meta">${esc(meta)}${it.address ? `<br>${esc(it.address)}` : ""}${distLabel(it) ? `<br><b class="dist">${esc(distLabel(it))}</b>` : ""}</div>
           ${it.notes ? `<div class="item-notes">${esc(it.notes)}</div>` : ""}
           <div class="item-actions">
             <button class="btn small vote ${mine ? "on" : ""}" data-act="vote" title="${esc(votes.join(", ") || "No votes yet")}">👍 ${votes.length || ""}</button>
@@ -355,11 +355,42 @@
       </div>`;
   }
 
+  // ---------- distance from the Airbnb ----------
+  function milesFromHome(p) {
+    if (!TRIP || p.lat == null || p.lng == null) return null;
+    const R = 3958.8, rad = Math.PI / 180;
+    const dLat = (p.lat - TRIP.stay.lat) * rad, dLng = (p.lng - TRIP.stay.lng) * rad;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(TRIP.stay.lat * rad) * Math.cos(p.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  // Straight-line distance with a rough travel time (city grid ≈ 1.3× straight line).
+  function distLabel(p) {
+    const mi = milesFromHome(p);
+    if (mi == null) return "";
+    if (mi < 0.1) return "🏠 Right by home";
+    const road = mi * 1.3;
+    const how = road <= 1.2 ? `~${Math.max(2, Math.round(road * 20))} min walk` : `~${Math.round(6 + road * 3)} min drive`;
+    return `🏠 ${mi.toFixed(1)} mi · ${how}`;
+  }
+  const RADII = [["Any", Infinity], ["< 1 mi", 1], ["< 3 mi", 3], ["< 6 mi", 6]];
+  let sortBy = "votes", within = Infinity;
+  const inRange = (p) => within === Infinity || (milesFromHome(p) ?? Infinity) <= within;
+  function renderDistControls() {
+    $("#dist-controls").innerHTML =
+      `<span class="small muted">Sort</span>` +
+      [["votes", "👍 Votes"], ["near", "🏠 Closest"]].map(([v, l]) => `<button class="chip ${sortBy === v ? "on" : ""}" data-sort="${v}">${l}</button>`).join("") +
+      `<span class="small muted" style="margin-left:6px">From home</span>` +
+      RADII.map(([l, v]) => `<button class="chip ${within === v ? "on" : ""}" data-within="${v}">${l}</button>`).join("");
+  }
+
   function renderLists() {
     const items = view().items;
     const plan = items.filter((i) => i.status === "plan");
-    const ideas = items.filter((i) => i.status !== "plan")
-      .sort((a, b) => (b.votes?.length || 0) - (a.votes?.length || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+    const allIdeas = items.filter((i) => i.status !== "plan");
+    const ideas = allIdeas.filter(inRange).sort(sortBy === "near"
+      ? (a, b) => (milesFromHome(a) ?? Infinity) - (milesFromHome(b) ?? Infinity)
+      : (a, b) => (b.votes?.length || 0) - (a.votes?.length || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+    renderDistControls();
 
     if (!plan.length) {
       $("#plan-list").innerHTML = `<div class="empty">Nothing locked in yet.<br>Add something, or promote an idea from the Maybe list.</div>`;
@@ -376,8 +407,10 @@
         return list.length ? `<div class="day-head">${esc(d.label)}</div>${list.map(itemCard).join("")}` : "";
       }).join("");
     }
-    $("#ideas-list").innerHTML = ideas.length ? ideas.map(itemCard).join("")
-      : `<div class="empty">No ideas yet. Search below or tap + on a suggestion.</div>`;
+    const hidden = allIdeas.length - ideas.length;
+    $("#ideas-list").innerHTML = (ideas.length ? ideas.map(itemCard).join("")
+      : `<div class="empty">${allIdeas.length ? "Nothing that close yet." : "No ideas yet. Search below or tap + on a suggestion."}</div>`)
+      + (hidden ? `<div class="small muted" style="margin:-4px 0 8px">${hidden} more farther away${allIdeas.some((i) => i.lat == null) ? " or without a location" : ""}.</div>` : "");
     renderSuggestions();
   }
 
@@ -386,7 +419,9 @@
     const taken = new Set(view().items.map((i) => i.title.toLowerCase()));
     const cats = ["All", "Infatuation", "Near us", ...new Set(window.SUGGESTIONS.map((s) => s.category))];
     $("#sugg-filters").innerHTML = cats.map((c) => `<button class="chip ${c === suggFilter ? "on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`).join("");
-    const list = window.SUGGESTIONS.filter((s) => suggFilter === "All" || s.category === suggFilter || (suggFilter === "Near us" && s.area === "Near us") || (suggFilter === "Infatuation" && s.source === "Infatuation"));
+    const list = window.SUGGESTIONS.filter((s) => suggFilter === "All" || s.category === suggFilter || (suggFilter === "Near us" && s.area === "Near us") || (suggFilter === "Infatuation" && s.source === "Infatuation"))
+      .filter((s) => within === Infinity || s.lat == null || inRange(s));
+    if (sortBy === "near") list.sort((a, b) => (milesFromHome(a) ?? Infinity) - (milesFromHome(b) ?? Infinity));
     $("#suggestions").innerHTML = list.map((s) => {
       const i = window.SUGGESTIONS.indexOf(s);
       const added = taken.has(s.title.toLowerCase());
@@ -394,7 +429,7 @@
         <div class="card sugg">
           <div class="item-body">
             <div class="item-title">${esc(s.title)} ${s.source ? `<span class="src">${esc(s.source)}</span>` : ""}</div>
-            <div class="item-meta">${esc(s.category)} · ${esc(s.area)}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">guide</a>` : ""}</div>
+            <div class="item-meta">${esc(s.category)} · ${esc(s.area)}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">guide</a>` : ""}${distLabel(s) ? `<br><b class="dist">${esc(distLabel(s))}</b>` : ""}</div>
             ${s.notes ? `<div class="small muted">${esc(s.notes)}</div>` : ""}
           </div>
           ${added ? `<span class="small muted">Added ✓</span>` : `<button class="btn small" data-sugg="${i}">+ Maybe</button>`}
@@ -640,7 +675,7 @@
       box.innerHTML = (results.length ? results.map((r, i) => `
         <div class="card sugg">
           <div class="item-body"><div class="item-title">${esc(r.title)}</div>
-            <div class="item-meta">${esc([r.type, r.address].filter(Boolean).join(" · "))}</div>
+            <div class="item-meta">${esc([r.type, r.address].filter(Boolean).join(" · "))}${distLabel(r) ? `<br><b class="dist">${esc(distLabel(r))}</b>` : ""}</div>
             <div class="res-details" data-details="${i}"></div></div>
           <div class="row"><button class="btn small" data-res="${i}" data-to="idea">+ Maybe</button>
             <button class="btn small" data-res="${i}" data-to="plan">+ Plan</button></div>
@@ -765,7 +800,7 @@
       pts.push([it.lat, it.lng]);
       L.marker([it.lat, it.lng], { icon: pinIcon(it.status === "plan" ? "plan" : "idea") }).addTo(layer)
         .bindPopup(`<b>${esc(it.title)}</b>${it.status === "plan" ? "" : "Maybe · "}${it.day || it.status === "plan" ? esc(dayLabel(it.day)) : ""}${it.time ? " · " + esc(it.time) : ""}
-          <br><a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.address)}&destination=${it.lat},${it.lng}" target="_blank" rel="noopener">Directions from Airbnb</a>`);
+          ${distLabel(it) ? `<br>${esc(distLabel(it))}` : ""}<br><a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.address)}&destination=${it.lat},${it.lng}" target="_blank" rel="noopener">Directions from Airbnb</a>`);
     }
     if ($("#show-sugg").checked) {
       const taken = new Set(view().items.map((i) => i.title.toLowerCase()));
@@ -872,6 +907,10 @@
       if (map) map.closePopup();
       return;
     }
+    const so = e.target.closest("[data-sort]");
+    if (so) { sortBy = so.dataset.sort; renderLists(); return; }
+    const wi = e.target.closest("[data-within]");
+    if (wi) { within = +wi.dataset.within; renderLists(); return; }
     const f = e.target.closest("[data-filter]");
     if (f) { suggFilter = f.dataset.filter; renderSuggestions(); return; }
     if (e.target.closest("#copy-invite")) {
