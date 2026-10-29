@@ -40,7 +40,7 @@
       <strong>Shared list isn't connected yet.</strong>
       <p class="small">One person creates it once, then sends the invite link to the group chat.</p>
       <div class="row">
-        <button id="create-sync" class="btn primary">Create shared list</button>
+        <button id="setup-sync" class="btn primary">Set up shared list</button>
         <button id="paste-sync" class="btn">I have a link</button>
       </div>
     </div>
@@ -185,6 +185,29 @@
         <span class="grow"></span>
         <button type="button" id="editor-cancel" class="btn">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Shared list setup -->
+  <dialog id="sync-dialog">
+    <form id="sync-form" method="dialog">
+      <h3>Set up the shared list</h3>
+      <p class="small muted">One person does this once (about 3 minutes, free). Everything stored there is encrypted with the trip passcode.</p>
+      <ol class="steps small">
+        <li>Open <a href="https://console.firebase.google.com/" target="_blank" rel="noopener"><b>console.firebase.google.com</b></a> and sign in with Google.</li>
+        <li>Tap <b>Create a project</b>. Name it anything (e.g. <i>chicago-trip</i>). Turn off Google Analytics, then <b>Create</b>.</li>
+        <li>In the left menu: <b>Build → Realtime Database → Create Database</b>. Pick <b>United States</b>, choose <b>Start in test mode</b>, then <b>Enable</b>.</li>
+        <li>Copy the link at the top of the database page. It looks like <code>https://chicago-trip-1234-default-rtdb.firebaseio.com/</code>.</li>
+        <li>Paste it below and tap <b>Connect</b>.</li>
+      </ol>
+      <input id="sync-url" type="url" placeholder="https://…firebaseio.com/" autocomplete="off">
+      <p id="sync-error" class="error" hidden></p>
+      <div class="row end">
+        <button type="button" id="try-instant" class="btn small">Try instant setup instead</button>
+        <span class="grow"></span>
+        <button type="button" id="sync-cancel" class="btn">Cancel</button>
+        <button type="submit" id="sync-connect" class="btn primary">Connect</button>
       </div>
     </form>
   </dialog>

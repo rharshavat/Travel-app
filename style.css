@@ -208,3 +208,8 @@ dialog .grid2 { margin: 0; }
 }
 .pin.plan { background: var(--plan); }
 .pin.idea { background: var(--idea); }
+dialog code { font-size: .75rem; overflow-wrap: anywhere; }
+dialog .steps a { color: var(--blue); }
+dialog form > * { min-width: 0; }
+#sync-form .row.end { flex-wrap: wrap; }
+#try-instant { order: 3; flex-basis: 100%; }

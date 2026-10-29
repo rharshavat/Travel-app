@@ -187,29 +187,63 @@
     flush();
   }
 
-  async function createShared() {
-    const btn = $("#create-sync");
-    btn.disabled = true; btn.textContent = "Creating…";
+  // Firebase Realtime Database root links become a single JSON document.
+  function normalizeSyncUrl(url) {
+    url = url.trim().replace(/^http:/, "https:");
+    if (/\.(firebaseio\.com|firebasedatabase\.app)/.test(url) && !/\.json(\?|$)/.test(url)) {
+      url = url.replace(/[#?].*$/, "").replace(/\/+$/, "") + "/chicago-trip.json";
+    }
+    return url;
+  }
+
+  // Connect to a storage URL. A brand-new (empty) store gets our current list.
+  async function setupShared(url) {
+    syncUrl = normalizeSyncUrl(url);
+    const res = await fetch(syncUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+    if (!res.ok) throw new Error(res.status === 401 || res.status === 403
+      ? "the database refused access — make sure you picked “Start in test mode”"
+      : `got HTTP ${res.status}`);
+    const body = await res.json().catch(() => null);
+    if (body && body.ct) {
+      await decryptEnvelope(body);   // throws if it was made with a different passcode
+    } else {
+      await push(view());
+    }
+    remote = view(); pending = [];
+    store.set(LS.pending, pending);
+    connect(syncUrl);
+    copy(inviteLink(), "Connected! Invite link copied — paste it in the group chat");
+  }
+
+  async function tryInstant() {
+    const res = await fetch(JSONBLOB, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(await encryptEnvelope(view())),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let id = res.headers.get("X-jsonblob");
+    const loc = res.headers.get("Location");
+    if (!id && loc) id = loc.split("/").pop();
+    if (!id) throw new Error("no id returned");
+    await setupShared(`${JSONBLOB}/${id}`);
+  }
+
+  async function runSetup(btn, label, fn) {
+    const err = $("#sync-error");
+    err.hidden = true;
+    btn.disabled = true; btn.textContent = "Connecting…";
     try {
-      const res = await fetch(JSONBLOB, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(await encryptEnvelope(view())),
-      });
-      if (!res.ok) throw new Error(`POST ${res.status}`);
-      let id = res.headers.get("X-jsonblob");
-      const loc = res.headers.get("Location");
-      if (!id && loc) id = loc.split("/").pop();
-      if (!id) throw new Error("no blob id in response");
-      remote = view(); pending = [];
-      store.set(LS.pending, pending);
-      connect(`${JSONBLOB}/${id}`);
-      copy(inviteLink(), "Invite link copied — paste it in the group chat");
+      await fn();
+      $("#sync-dialog").close();
     } catch (e) {
       console.warn(e);
-      alert("Couldn't create the shared list automatically (" + e.message + ").\n\nFallback: open jsonblob.com, save an empty {} blob, and paste its URL with “I have a link”.");
+      syncUrl = store.get(LS.sync);
+      const msg = e instanceof TypeError ? "couldn't reach it (network or blocked)" : e.name === "OperationError" ? "that list was made with a different passcode" : e.message;
+      err.textContent = `Didn't work: ${msg}.`;
+      err.hidden = false;
     } finally {
-      btn.disabled = false; btn.textContent = "Create shared list";
+      btn.disabled = false; btn.textContent = label;
     }
   }
 
@@ -605,7 +639,7 @@
     const f = e.target.closest("[data-filter]");
     if (f) { suggFilter = f.dataset.filter; renderSuggestions(); return; }
     if (e.target.closest("#copy-invite")) {
-      return syncUrl ? copy(inviteLink(), "Invite link copied") : toast("Create the shared list first (banner at the top)");
+      return syncUrl ? copy(inviteLink(), "Invite link copied") : toast("Set up the shared list first (banner at the top)");
     }
     if (e.target.closest("#export")) {
       const blob = new Blob([JSON.stringify(view(), null, 2)], { type: "application/json" });
@@ -622,13 +656,21 @@
   $$(".add-btn").forEach((b) => b.addEventListener("click", () => openEditor({ status: b.dataset.status })));
   $$(".tabbar button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("#show-sugg").addEventListener("change", () => renderMap());
-  $("#create-sync").addEventListener("click", createShared);
+  $("#setup-sync").addEventListener("click", () => { $("#sync-error").hidden = true; $("#sync-dialog").showModal(); });
+  $("#sync-cancel").addEventListener("click", () => $("#sync-dialog").close());
+  $("#sync-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const url = parseSyncInput($("#sync-url").value);
+    if (!url) { $("#sync-error").textContent = "Paste the database link (starts with https://)."; $("#sync-error").hidden = false; return; }
+    runSetup($("#sync-connect"), "Connect", () => setupShared(url));
+  });
+  $("#try-instant").addEventListener("click", () => runSetup($("#try-instant"), "Try instant setup instead", tryInstant));
   $("#paste-sync").addEventListener("click", () => {
     const url = parseSyncInput(prompt("Paste the invite link:"));
-    if (url) connect(url); else toast("That doesn't look like an invite link");
+    if (url) connect(normalizeSyncUrl(url)); else toast("That doesn't look like an invite link");
   });
   $("#sync-pill").addEventListener("click", () => {
     if (syncUrl) { flush(); copy(inviteLink(), "Synced · invite link copied"); }
-    else toast("Not shared yet — use the banner to create the shared list");
+    else toast("Not shared yet — use the banner to set up the shared list");
   });
 })();
