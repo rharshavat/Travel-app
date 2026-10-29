@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "13";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "14";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -479,6 +479,7 @@
     queue({ type: "upsert", id: item.id, item });
     if (!quiet) toast(`Added to ${item.status === "plan" ? "the plan" : "Maybe"}`);
     if (item.lat == null) autoPin(item);
+    return item;
   }
 
   // Look the place up in the background so it lands on the map without extra typing.
@@ -773,19 +774,54 @@
     return { title: t.trim(), venue: venue.trim() };
   }
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Link previews from free services, tried in order until one returns a title.
+  const PREVIEWERS = [
+    async (url) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&palette=false&audio=false&video=false&iframe=false`);
+        if (res.status === 429 || res.status >= 500) { await sleep(1500 * (attempt + 1)); continue; }
+        const body = await res.json();
+        const d = body.status === "success" ? body.data || {} : {};
+        return { title: d.title, description: d.description, image: d.image?.url };
+      }
+      return {};
+    },
+    async (url) => {
+      // Renders the page first, so it can read sites that build their pages with JavaScript.
+      const res = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: "application/json", "X-Return-Format": "markdown" } });
+      if (!res.ok) return {};
+      const d = (await res.json()).data || {};
+      const text = String(d.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+      return { title: d.title, description: d.description || clip(text.replace(/\s+/g, " "), 400), image: d.images ? Object.values(d.images)[0] : "", extra: text.slice(0, 4000) };
+    },
+    async (url) => {
+      const res = await fetch(`https://api.dub.co/metatags?url=${encodeURIComponent(url)}`);
+      if (!res.ok) return {};
+      const d = await res.json();
+      return { title: d.title, description: d.description, image: d.image };
+    },
+  ];
+  async function fetchMeta(url) {
+    for (const get of PREVIEWERS) {
+      try {
+        const d = await get(url);
+        if (d && d.title && !/^(just a moment|attention required|access denied|404|page not found)/i.test(d.title)) return d;
+      } catch {}
+    }
+    return {};
+  }
+
   // Everything we can learn about a link from its share preview.
   async function previewLink(url) {
-    let data = {};
-    try {
-      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
-      const body = await res.json();
-      if (body.status === "success") data = body.data || {};
-    } catch {}
+    const meta = await fetchMeta(url);
+    const data = { title: meta.title, description: meta.description, image: { url: meta.image } };
     const { title, venue } = cleanTitle(data.title, url);
-    const when = findWhen(`${data.title || ""} ${data.description || ""} ${decodeURIComponent(url)}`);
+    let when = findWhen(`${data.title || ""} ${data.description || ""} ${decodeURIComponent(url)}`);
+    if (!when.day && meta.extra) when = { ...findWhen(meta.extra), ...Object.fromEntries(Object.entries(when).filter(([, v]) => v)) };
     const event = EVENT_SITES.test(url);
     return {
-      ok: !!title,
+      ok: !!data.title,
       title, day: when.day || "", time: when.time || "",
       notes: clip(data.description || "", 500),
       image: data.image?.url || "",
@@ -851,9 +887,23 @@
     $("#bulk-text").hidden = false;
     $("#bulk-go").hidden = false;
     $("#bulk-paste").hidden = false;
+    $("#bulk-retry").hidden = true;
     $("#bulk-cancel").textContent = "Cancel";
     bulkCount();
     bulk.showModal();
+  }
+  let bulkFailed = [];
+  const shortUrl = (u) => u.replace(/^https?:\/\/(www\.)?/, "");
+  function bulkRow(i, p, title) {
+    const li = $(`[data-b="${i}"]`, $("#bulk-log"));
+    if (!li) return;
+    li.innerHTML = p.ok
+      ? `✅ <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found — set it with 📅</span>`}`
+      : `⚠️ <b>${esc(title)}</b> <span class="muted">· saved, but the site didn't share details</span>`;
+  }
+  function setRetry() {
+    $("#bulk-retry").hidden = !bulkFailed.length;
+    $("#bulk-retry").textContent = `↻ Retry ${bulkFailed.length} that didn't work`;
   }
   $("#bulk-go").addEventListener("click", async () => {
     const have = new Set(view().items.map((i) => (i.url || "").replace(/\/+$/, "")));
@@ -863,24 +913,47 @@
     $("#bulk-go").hidden = true;
     $("#bulk-paste").hidden = true;
     $("#bulk-cancel").textContent = "Close";
-    log.innerHTML = urls.map((u, i) => `<li data-b="${i}"><span class="muted">⏳</span> ${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60))}</li>`).join("");
+    log.innerHTML = urls.map((u, i) => `<li data-b="${i}"><span class="muted">⏳ ${esc(shortUrl(u).slice(0, 60))}</span></li>`).join("");
+    bulkFailed = [];
     let added = 0;
-    const row = (i, html) => { const li = $(`[data-b="${i}"]`, log); if (li) li.innerHTML = html; };
-    // Two at a time keeps the free preview service happy.
-    let next = 0;
-    async function worker() {
-      while (next < urls.length) {
-        const i = next++, u = urls[i];
-        if (have.has(u.replace(/\/+$/, ""))) { row(i, `<span class="muted">↩︎ Already on the list</span> ${esc(u.slice(0, 50))}`); continue; }
-        const p = await previewLink(u);
-        const title = p.title || u.replace(/^https?:\/\/(www\.)?/, "").split(/[/?#]/)[0];
-        addItem({ ...p, title, kind: p.kind || "event", category: p.category || "Nightlife", status: "idea" }, { quiet: true });
-        added++;
-        row(i, `${p.ok ? "✅" : "⚠️"} <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found</span>`}`);
+    // One at a time: the free preview services turn away simultaneous requests.
+    for (let i = 0; i < urls.length; i++) {
+      const u = urls[i];
+      if (have.has(u.replace(/\/+$/, ""))) {
+        $(`[data-b="${i}"]`, log).innerHTML = `<span class="muted">↩︎ Already on the list · ${esc(shortUrl(u).slice(0, 50))}</span>`;
+        continue;
       }
+      $(`[data-b="${i}"]`, log).innerHTML = `<span class="muted">🔎 Reading ${esc(shortUrl(u).slice(0, 55))}…</span>`;
+      const p = await previewLink(u);
+      const title = p.title || shortUrl(u).split(/[/?#]/)[0];
+      const item = addItem({ ...p, title, kind: p.kind || "event", category: p.category || "Nightlife", status: "idea" }, { quiet: true });
+      added++;
+      bulkRow(i, p, title);
+      if (!p.ok) bulkFailed.push({ i, url: u, id: item.id });
+      await sleep(400);
     }
-    await Promise.all([worker(), worker()]);
+    setRetry();
     toast(`Added ${added} event${added === 1 ? "" : "s"} to Maybe`);
+  });
+  $("#bulk-retry").addEventListener("click", async () => {
+    const todo = bulkFailed;
+    bulkFailed = [];
+    $("#bulk-retry").hidden = true;
+    for (const f of todo) {
+      $(`[data-b="${f.i}"]`, $("#bulk-log")).innerHTML = `<span class="muted">🔎 Trying again: ${esc(shortUrl(f.url).slice(0, 50))}…</span>`;
+      await sleep(1200);
+      const p = await previewLink(f.url);
+      const cur = view().items.find((x) => x.id === f.id);
+      if (p.ok && cur) {
+        const fields = {};
+        for (const k of ["title", "notes", "image", "day", "time", "address"]) if (p[k] && !(k !== "title" && cur[k])) fields[k] = p[k];
+        queue({ type: "patch", id: f.id, fields });
+        if (fields.address && cur.lat == null) autoPin({ ...cur, ...fields });
+      }
+      if (!p.ok) bulkFailed.push(f);
+      bulkRow(f.i, p, p.title || cur?.title || shortUrl(f.url));
+    }
+    setRetry();
   });
 
   // ---------- map ----------
