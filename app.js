@@ -341,7 +341,8 @@
           <div class="item-actions">
             <button class="btn small vote ${mine ? "on" : ""}" data-act="vote" title="${esc(votes.join(", ") || "No votes yet")}">👍 ${votes.length || ""}</button>
             ${it.status === "idea"
-              ? `<button class="btn small" data-act="toplan">→ Plan</button>`
+              ? `<button class="btn small" data-act="when">📅 ${it.day || it.time ? "Change time" : "When"}</button>
+                 <button class="btn small" data-act="toplan">→ Plan</button>`
               : `<button class="btn small" data-act="done">${it.done ? "Undo" : "✓ Done"}</button>
                  <button class="btn small" data-act="toidea">→ Maybe</button>`}
             <a class="btn small" href="${esc(gmapsSearch(it))}" target="_blank" rel="noopener">Maps</a>
@@ -447,6 +448,7 @@
       case "toidea": queue({ type: "patch", id, fields: { status: "idea", done: false } }); break;
       case "done": queue({ type: "patch", id, fields: { done: !it.done } }); break;
       case "edit": openEditor(it); break;
+      case "when": openEditor(it); $("#when").scrollIntoView({ block: "center" }); break;
     }
   }
 
