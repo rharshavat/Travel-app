@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "15";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "16";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -777,10 +777,43 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Link previews from free services, tried in order until one returns a title.
+  // Read the page's own tags: Open Graph for the name and picture, schema.org Event data for the exact
+  // start time and venue (Eventbrite, Dice, RA and most ticket sites publish this).
+  function parsePage(html, pageUrl) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const meta = (k) => doc.querySelector(`meta[property="${k}"], meta[name="${k}"]`)?.getAttribute("content") || "";
+    const out = { title: meta("og:title") || doc.title, description: meta("og:description") || meta("description"), image: meta("og:image"), finalUrl: meta("og:url") || pageUrl };
+    const isEvent = (x) => x && /Event$/.test([].concat(x["@type"] || "").join(" "));
+    for (const s of doc.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        let j = JSON.parse(s.textContent);
+        j = [].concat(j["@graph"] || j).find(isEvent);
+        if (!j) continue;
+        out.title = j.name || out.title;
+        out.startDate = j.startDate || "";
+        const loc = [].concat(j.location || [])[0] || {};
+        const a = loc.address || {};
+        out.venue = loc.name || "";
+        out.venueAddress = typeof a === "string" ? a : [a.streetAddress, a.addressLocality].filter(Boolean).join(", ");
+        if (!out.description && j.description) out.description = j.description;
+        if (!out.image && j.image) out.image = [].concat(j.image)[0]?.url || [].concat(j.image)[0];
+        break;
+      } catch {}
+    }
+    return out;
+  }
+
+  // Give up on a preview service after a few seconds so one slow site can't stall a bulk add.
+  function timedFetch(url, opts = {}, ms = 9000) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
+  }
+
   const PREVIEWERS = [
     async (url) => {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&palette=false&audio=false&video=false&iframe=false`);
+        const res = await timedFetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&palette=false&audio=false&video=false&iframe=false`);
         if (res.status === 429 || res.status >= 500) { await sleep(1500 * (attempt + 1)); continue; }
         const body = await res.json();
         const d = body.status === "success" ? body.data || {} : {};
@@ -789,15 +822,23 @@
       return {};
     },
     async (url) => {
+      // Downloads the page (following share-link redirects) so we can read its tags ourselves.
+      const res = await timedFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+      if (!res.ok) return {};
+      const body = await res.json();
+      if (!body.contents) return {};
+      return parsePage(body.contents, body.status?.url || url);
+    },
+    async (url) => {
       // Renders the page first, so it can read sites that build their pages with JavaScript.
-      const res = await fetch(`https://r.jina.ai/${url}`, { headers: { Accept: "application/json", "X-Return-Format": "markdown" } });
+      const res = await timedFetch(`https://r.jina.ai/${url}`, { headers: { Accept: "application/json", "X-Return-Format": "markdown" } });
       if (!res.ok) return {};
       const d = (await res.json()).data || {};
       const text = String(d.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
       return { title: d.title, description: d.description || clip(text.replace(/\s+/g, " "), 400), image: d.images ? Object.values(d.images)[0] : "", extra: text.slice(0, 4000), finalUrl: d.url };
     },
     async (url) => {
-      const res = await fetch(`https://api.dub.co/metatags?url=${encodeURIComponent(url)}`);
+      const res = await timedFetch(`https://api.dub.co/metatags?url=${encodeURIComponent(url)}`);
       if (!res.ok) return {};
       const d = await res.json();
       return { title: d.title, description: d.description, image: d.image };
@@ -808,7 +849,9 @@
   const SHORT_LINK = /^https?:\/\/(link\.dice\.fm|dice\.link|evt\.to|eventbrite\.com\/e\/?$|bit\.ly|tinyurl\.com|t\.co|lnkd\.in|ow\.ly|app\.link|[a-z0-9-]+\.app\.link|go\.dice\.fm)\//i;
   async function fetchMeta(url) {
     let finalUrl = "";
-    for (const get of PREVIEWERS) {
+    // Ticket and share links: read the page itself first, since that's where the exact date and venue live.
+    const order = EVENT_SITES.test(url) || SHORT_LINK.test(url) ? [1, 0, 2, 3] : [0, 1, 2, 3];
+    for (const get of order.map((i) => PREVIEWERS[i])) {
       try {
         const d = await get(url);
         if (d?.finalUrl && d.finalUrl !== url && !finalUrl) finalUrl = d.finalUrl;
@@ -832,6 +875,13 @@
     const data = { title: meta.title, description: meta.description, image: { url: meta.image } };
     const { title, venue } = cleanTitle(data.title, url);
     let when = findWhen(`${data.title || ""} ${data.description || ""} ${decodeURIComponent(url)}`);
+    const sd = String(meta.startDate || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+    if (sd) {
+      const h = +sd[2], m = Math.round(+sd[3] / 15) * 15, mins = h * 60 + m, hh = Math.floor(mins / 60) % 24;
+      const label = `${hh % 12 || 12}:${String(mins % 60).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+      if (DAYS.some((d) => d.value === sd[1])) when.day = sd[1];
+      if (TIMES.includes(label)) when.time = label;
+    }
     if (!when.day && meta.extra) when = { ...findWhen(meta.extra), ...Object.fromEntries(Object.entries(when).filter(([, v]) => v)) };
     const event = EVENT_SITES.test(url);
     return {
@@ -839,7 +889,8 @@
       title, day: when.day || "", time: when.time || "",
       notes: clip(data.description || "", 500),
       image: data.image?.url || "",
-      address: venue ? (/chicago/i.test(venue) ? venue : `${venue}, Chicago`) : "",
+      address: meta.venueAddress ? [meta.venue, meta.venueAddress].filter(Boolean).join(", ")
+        : (venue || meta.venue) ? (/chicago/i.test(venue || meta.venue) ? (venue || meta.venue) : `${venue || meta.venue}, Chicago`) : "",
       url, shareUrl: shareUrl !== url ? shareUrl : "",
       kind: event ? "event" : "",
       category: event ? "Nightlife" : "",
