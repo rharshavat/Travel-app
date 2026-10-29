@@ -17,7 +17,8 @@ A private, mobile-friendly trip page for the group: Airbnb info and codes, house
 Edit your private `trip.json` (it's gitignored and never committed), then run:
 
 ```
-node tools/encrypt.mjs trip.json "new-passcode"
+node tools/encrypt.mjs trip.json "passcode"            # same passcode, keeps the shared list
+node tools/encrypt.mjs trip.json "new-passcode" --new-salt   # new passcode
 ```
 
 Then commit the new `trip.enc.json`. If you change the passcode, the shared lists need to be set up again, because the old blob was encrypted with the old passcode.
