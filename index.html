@@ -103,7 +103,7 @@
       <section id="tab-plan" class="tab" hidden>
         <div class="section-head">
           <h2 class="section-title">The plan</h2>
-          <button class="btn primary add-btn" data-status="plan">+ Add</button>
+          <div class="row"><button class="btn link-btn" data-status="plan">🔗 Link</button><button class="btn primary add-btn" data-status="plan">+ Add</button></div>
         </div>
         <p class="muted small">Stuff we're actually doing. Set a day so it shows up in the right spot.</p>
         <div id="plan-list"></div>
@@ -113,7 +113,7 @@
       <section id="tab-ideas" class="tab" hidden>
         <div class="section-head">
           <h2 class="section-title">Maybe list</h2>
-          <button class="btn primary add-btn" data-status="idea">+ Add</button>
+          <div class="row"><button class="btn link-btn" data-status="idea">🔗 Link</button><button class="btn primary add-btn" data-status="idea">+ Add</button></div>
         </div>
         <p class="muted small">Things we might want to do. 👍 what you like, then move winners to the plan.</p>
         <div id="ideas-list"></div>
@@ -155,6 +155,12 @@
   <dialog id="editor">
     <form id="editor-form" method="dialog">
       <h3 id="editor-title">Add something</h3>
+      <div class="row">
+        <input id="link-in" type="url" inputmode="url" placeholder="🔗 Paste an Eventbrite, Partiful or any link" autocomplete="off">
+        <button type="button" id="link-paste" class="btn">Paste</button>
+      </div>
+      <div id="link-status" class="small muted" hidden></div>
+      <img id="link-img" class="link-img" alt="" referrerpolicy="no-referrer" hidden>
       <input name="title" required placeholder="What? e.g. Pequod's Pizza" autocomplete="off">
       <div class="seg" id="status-seg">
         <button type="button" data-v="idea">💡 Maybe</button>
@@ -181,7 +187,7 @@
         <label>Link<input name="url" type="url" placeholder="Reservation, website, tickets…"></label>
         <label>Notes<textarea name="notes" rows="3" placeholder="Reservation for 6, bring cash, etc."></textarea></label>
       </details>
-      <input type="hidden" name="status"><input type="hidden" name="day"><input type="hidden" name="time">
+      <input type="hidden" name="image"><input type="hidden" name="status"><input type="hidden" name="day"><input type="hidden" name="time">
       <input type="hidden" name="lat"><input type="hidden" name="lng">
       <div class="row end">
         <button type="button" id="editor-delete" class="btn danger" hidden>Delete</button>

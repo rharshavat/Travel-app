@@ -332,6 +332,7 @@
     return `
       <div class="card item ${it.status} ${it.done ? "done" : ""}" data-id="${esc(it.id)}">
         <div class="bar"></div>
+        ${it.image ? `<img class="thumb" src="${esc(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}
         <div class="item-body">
           <div class="item-title">${esc(it.title)}</div>
           <div class="item-meta">${esc(meta)}${it.address ? `<br>${esc(it.address)}` : ""}</div>
@@ -509,7 +510,11 @@
     $("#editor-title").textContent = editingId ? "Edit" : "Add something";
     $("#editor-delete").hidden = !editingId;
     $("#geo-status").textContent = it.lat != null ? "📍 On the map" : "";
-    for (const k of ["title", "address", "category", "url", "notes", "lat", "lng", "time"]) {
+    $("#link-in").value = "";
+    $("#link-status").hidden = true;
+    $("#link-img").hidden = !it.image;
+    if (it.image) $("#link-img").src = it.image;
+    for (const k of ["title", "address", "category", "url", "notes", "lat", "lng", "time", "image"]) {
       form[k].value = it[k] ?? (k === "category" ? "Other" : "");
     }
     $("details.more", form).open = !!(it.notes || it.url);
@@ -532,6 +537,7 @@
         title: p.name || street || q,
         address: [street, p.district || p.locality, p.city].filter(Boolean).join(", "),
         type: (p.osm_value || "").replace(/_/g, " "),
+        osm: p.osm_type && p.osm_id ? `${p.osm_type}${p.osm_id}` : null,
         lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
       };
     });
@@ -569,6 +575,54 @@
   });
 
   // ---------- search ----------
+  const CAT = {
+    restaurant: "Food", fast_food: "Food", cafe: "Food", bakery: "Food", ice_cream: "Food", food_court: "Food",
+    bar: "Drinks", pub: "Drinks", biergarten: "Drinks", brewery: "Drinks", nightclub: "Nightlife",
+    museum: "Museum", gallery: "Museum", park: "Outdoors", garden: "Outdoors", attraction: "Sights", viewpoint: "Sights",
+    theatre: "Activity", cinema: "Activity", arts_centre: "Activity", stadium: "Activity",
+  };
+  const clip = (t, n = 220) => (t && t.length > n ? t.slice(0, n).replace(/\s+\S*$/, "") + "…" : t || "");
+
+  // Extra info for search hits: OSM tags (cuisine, hours, website) plus a Wikipedia summary when the place has one.
+  async function placeDetails(results) {
+    const ids = results.map((r) => r.osm).filter(Boolean);
+    if (!ids.length) return;
+    const res = await fetch(`https://nominatim.openstreetmap.org/lookup?osm_ids=${ids.join(",")}&format=json&extratags=1`);
+    if (!res.ok) return;
+    const byId = {};
+    for (const p of await res.json()) byId[`${p.osm_type[0].toUpperCase()}${p.osm_id}`] = p.extratags || {};
+    await Promise.all(results.map(async (r) => {
+      const t = byId[r.osm];
+      if (!t) return;
+      r.cuisine = t.cuisine ? t.cuisine.replace(/_/g, " ").replace(/;/g, ", ") : "";
+      r.hours = t.opening_hours ? t.opening_hours.replace(/;\s*/g, " · ") : "";
+      r.website = t.website || t["contact:website"] || "";
+      r.desc = t.description || "";
+      let wiki = t.wikipedia && t.wikipedia.startsWith("en:") ? t.wikipedia.slice(3) : "";
+      if (!wiki && t.wikidata) {
+        try {
+          const wd = await (await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${t.wikidata}&props=sitelinks&sitefilter=enwiki&format=json&origin=*`)).json();
+          wiki = wd.entities?.[t.wikidata]?.sitelinks?.enwiki?.title || "";
+        } catch {}
+      }
+      if (wiki) {
+        try {
+          const w = await (await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wiki.replace(/ /g, "_"))}`)).json();
+          if (w.extract) r.desc = w.extract;
+        } catch {}
+      }
+    }));
+  }
+
+  function detailsHtml(r) {
+    const bits = [];
+    if (r.desc) bits.push(`<span>${esc(clip(r.desc))}</span>`);
+    if (r.cuisine) bits.push(`<span class="muted">🍽 ${esc(r.cuisine)}</span>`);
+    if (r.hours) bits.push(`<span class="muted">🕒 ${esc(r.hours)}</span>`);
+    if (r.website) bits.push(`<a href="${esc(r.website)}" target="_blank" rel="noopener">Website →</a>`);
+    return bits.join("");
+  }
+
   let lastResults = [];
   $("#search-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -578,14 +632,18 @@
     box.innerHTML = `<div class="small muted">Searching…</div>`;
     const google = `<a class="btn small" href="https://www.google.com/maps/search/${encodeURIComponent(q + " near Chicago")}" target="_blank" rel="noopener">See reviews & hours on Google Maps →</a>`;
     try {
-      lastResults = await geocode(q);
-      box.innerHTML = (lastResults.length ? lastResults.map((r, i) => `
+      const results = lastResults = await geocode(q);
+      box.innerHTML = (results.length ? results.map((r, i) => `
         <div class="card sugg">
           <div class="item-body"><div class="item-title">${esc(r.title)}</div>
-            <div class="item-meta">${esc([r.type, r.address].filter(Boolean).join(" · "))}</div></div>
+            <div class="item-meta">${esc([r.type, r.address].filter(Boolean).join(" · "))}</div>
+            <div class="res-details" data-details="${i}"></div></div>
           <div class="row"><button class="btn small" data-res="${i}" data-to="idea">+ Maybe</button>
             <button class="btn small" data-res="${i}" data-to="plan">+ Plan</button></div>
         </div>`).join("") : `<div class="small muted">No matches — try a specific name.</div>`) + `<div style="margin:8px 0 4px">${google}</div>`;
+      await placeDetails(results).catch(() => {});
+      if (lastResults !== results) return;
+      results.forEach((r, i) => { const el = $(`[data-details="${i}"]`, box); if (el) el.innerHTML = detailsHtml(r); });
     } catch {
       box.innerHTML = `<div class="small muted">Search unavailable.</div>${google}`;
     }
@@ -594,9 +652,87 @@
     const b = e.target.closest("[data-res]");
     if (!b) return;
     const r = lastResults[+b.dataset.res];
-    const fields = { title: r.title, address: r.address, lat: r.lat, lng: r.lng, category: "Other", status: b.dataset.to };
+    const notes = [clip(r.desc, 400), r.cuisine && `Cuisine: ${r.cuisine}`, r.hours && `Hours: ${r.hours}`].filter(Boolean).join("\n");
+    const fields = {
+      title: r.title, address: r.address, lat: r.lat, lng: r.lng, notes, url: r.website || "",
+      category: CAT[r.type.replace(/ /g, "_")] || "Other", status: b.dataset.to,
+    };
     if (b.dataset.to === "plan") openEditor(fields);
     else { addItem(fields); b.closest(".card").remove(); }
+  });
+
+  // ---------- paste a link ----------
+  const MONTHS = { oct: 9, october: 9, nov: 10, november: 10 };
+  // Pull the trip day and time out of text like "Sat, Oct 31, 2026 at 9:00 PM" or "Saturday, October 31 · 9pm".
+  function findWhen(text) {
+    const out = {};
+    const d = String(text).match(/\b(oct(?:ober)?|nov(?:ember)?)\.?\s+(\d{1,2})\b/i);
+    if (d) {
+      const iso = `2026-${String(MONTHS[d[1].toLowerCase()] + 1).padStart(2, "0")}-${d[2].padStart(2, "0")}`;
+      if (DAYS.some((x) => x.value === iso)) out.day = iso;
+    }
+    const t = String(text).match(/\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i);
+    if (t) {
+      const mins = Math.round((+t[2] || 0) / 15) * 15;
+      const h = +t[1] + (mins === 60 ? 1 : 0);
+      const label = `${((h - 1) % 12) + 1}:${String(mins % 60).padStart(2, "0")} ${t[3].toUpperCase()}M`;
+      if (TIMES.includes(label)) out.time = label;
+    }
+    return out;
+  }
+  function cleanTitle(title, url) {
+    let t = (title || "").replace(/\s*[|–-]\s*(Eventbrite|Partiful)\s*$/i, "");
+    t = t.replace(/\s+Tickets?,?\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^|]*$/i, "").replace(/\s+Tickets?$/i, "");
+    if (!t) {
+      const slug = (url.match(/eventbrite\.[^/]+\/e\/([^/?#]+?)-tickets-\d+/i) || [])[1];
+      if (slug) t = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    return t.trim();
+  }
+
+  async function importLink(raw) {
+    const url = (raw || "").trim().match(/https?:\/\/\S+/)?.[0];
+    const st = $("#link-status");
+    if (!url) return;
+    st.hidden = false;
+    st.textContent = "Reading the link…";
+    form.url.value = url;
+    if (!form.category.value || form.category.value === "Other") {
+      if (/eventbrite|partiful|lu\.ma|dice\.fm|ra\.co/i.test(url)) form.category.value = "Nightlife";
+    }
+    let data = {};
+    try {
+      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+      const body = await res.json();
+      if (body.status === "success") data = body.data || {};
+    } catch {}
+    const title = cleanTitle(data.title, url);
+    if (title && !form.title.value.trim()) form.title.value = title;
+    if (data.description && !form.notes.value.trim()) form.notes.value = clip(data.description, 500);
+    if (data.image?.url) {
+      form.image.value = data.image.url;
+      $("#link-img").src = data.image.url;
+      $("#link-img").hidden = false;
+    }
+    const when = findWhen(`${data.title || ""} ${data.description || ""}`);
+    if (when.day || when.time) {
+      setStatus("plan");
+      if (when.day) setDay(when.day);
+      if (when.time) { form.time.value = when.time; requestAnimationFrame(() => wheelSet(when.time)); }
+    }
+    $("details.more", form).open = true;
+    st.textContent = title
+      ? `✓ Got it${when.day ? ` — ${dayLabel(when.day)}${when.time ? " · " + when.time : ""}` : " — pick a day"}`
+      : "Couldn't read that link — saved it, just type a name.";
+    if (!form.title.value.trim()) form.title.focus();
+  }
+  $("#link-in").addEventListener("input", (e) => { if (/https?:\/\/\S+\.\S+/.test(e.target.value)) importLink(e.target.value); });
+  $("#link-paste").addEventListener("click", async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      $("#link-in").value = text;
+      importLink(text);
+    } catch { $("#link-in").focus(); toast("Long-press the box and tap Paste"); }
   });
 
   // ---------- map ----------
@@ -732,6 +868,7 @@
   $("#plan-list").addEventListener("click", onItemAction);
   $("#ideas-list").addEventListener("click", onItemAction);
   $$(".add-btn").forEach((b) => b.addEventListener("click", () => openEditor({ status: b.dataset.status })));
+  $$(".link-btn").forEach((b) => b.addEventListener("click", () => { openEditor({ status: b.dataset.status }); $("#link-in").focus(); }));
   $$(".tabbar button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("#show-sugg").addEventListener("change", () => renderMap());
   $("#setup-sync").addEventListener("click", () => { $("#sync-error").hidden = true; $("#sync-dialog").showModal(); });
