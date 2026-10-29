@@ -328,7 +328,8 @@
   function itemCard(it) {
     const votes = it.votes || [];
     const mine = votes.includes(ME);
-    const meta = [it.category, it.status === "plan" && it.time ? it.time : "", it.addedBy ? `added by ${it.addedBy}` : ""].filter(Boolean).join(" · ");
+    const when = it.status === "plan" ? it.time : [it.day ? dayLabel(it.day) : "", it.time].filter(Boolean).join(" ");
+    const meta = [it.category, when ? (it.status === "plan" ? when : `📅 ${when}`) : "", it.addedBy ? `added by ${it.addedBy}` : ""].filter(Boolean).join(" · ");
     return `
       <div class="card item ${it.status} ${it.done ? "done" : ""}" data-id="${esc(it.id)}">
         <div class="bar"></div>
@@ -495,8 +496,9 @@
   function setStatus(v) {
     form.status.value = v;
     $$("#status-seg button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
-    $("#when").hidden = v !== "plan";
-    if (v === "plan") requestAnimationFrame(() => wheelSet(form.time.value || "Any time"));
+    if (v === "plan" && !form.day.value && !editingId) setDay(defaultDay());
+    $("#when-hint").hidden = v === "plan";
+    requestAnimationFrame(() => wheelSet(form.time.value || "Any time"));
   }
   $("#status-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setStatus(b.dataset.v); });
 
@@ -519,7 +521,7 @@
     }
     $("details.more", form).open = !!(it.notes || it.url);
     const wasPlan = editingId && view().items.find((i) => i.id === editingId)?.status === "plan";
-    setDay(it.day || (wasPlan ? "" : defaultDay()));
+    setDay(it.day || (it.status === "plan" && !wasPlan ? defaultDay() : ""));
     editor.showModal();
     setStatus(it.status || "idea");
     wheelSet(form.time.value || "Any time");
@@ -562,7 +564,6 @@
     const f = Object.fromEntries(new FormData(form));
     f.lat = f.lat === "" ? null : +f.lat;
     f.lng = f.lng === "" ? null : +f.lng;
-    if (f.status !== "plan") { f.day = ""; f.time = ""; }
     if (editingId) {
       queue({ type: "upsert", id: editingId, item: { ...f, id: editingId } });
       if (f.lat == null) autoPin({ ...f, id: editingId });
@@ -716,7 +717,6 @@
     }
     const when = findWhen(`${data.title || ""} ${data.description || ""}`);
     if (when.day || when.time) {
-      setStatus("plan");
       if (when.day) setDay(when.day);
       if (when.time) { form.time.value = when.time; requestAnimationFrame(() => wheelSet(when.time)); }
     }
@@ -761,7 +761,7 @@
       if (it.lat == null) continue;
       pts.push([it.lat, it.lng]);
       L.marker([it.lat, it.lng], { icon: pinIcon(it.status === "plan" ? "plan" : "idea") }).addTo(layer)
-        .bindPopup(`<b>${esc(it.title)}</b>${it.status === "plan" ? esc(dayLabel(it.day)) + (it.time ? " · " + esc(it.time) : "") : "Maybe"}
+        .bindPopup(`<b>${esc(it.title)}</b>${it.status === "plan" ? "" : "Maybe · "}${it.day || it.status === "plan" ? esc(dayLabel(it.day)) : ""}${it.time ? " · " + esc(it.time) : ""}
           <br><a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.address)}&destination=${it.lat},${it.lng}" target="_blank" rel="noopener">Directions from Airbnb</a>`);
     }
     if ($("#show-sugg").checked) {
