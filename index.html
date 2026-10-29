@@ -6,10 +6,13 @@
   <meta name="robots" content="noindex, nofollow">
   <meta http-equiv="Cache-Control" content="no-cache">
   <meta name="theme-color" content="#0b2545">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Chicago">
   <title>Chicago Weekend</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✶</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <!-- Lock screen -->
@@ -34,8 +37,13 @@
         <div class="title">✶ Chicago Weekend</div>
         <div id="countdown" class="muted small"></div>
       </div>
-      <button id="sync-pill" class="pill" title="Sync status">…</button>
+      <div class="row">
+        <button id="sync-pill" class="pill" title="Sync status">…</button>
+        <button id="reload" class="pill icon" title="Refresh" aria-label="Refresh">↻</button>
+      </div>
     </header>
+
+    <button id="update-banner" class="update" hidden>✨ New version available — tap to update</button>
 
     <div id="sync-setup" class="banner" hidden>
       <strong>Shared list isn't connected yet.</strong>
@@ -225,7 +233,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="places.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="places.js?v=9"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

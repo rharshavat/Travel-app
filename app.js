@@ -12,6 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
+  const APP_VERSION = "9";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -840,6 +841,24 @@
     }
     if (joined) $("#lock .muted").textContent = "You've been invited ✶ enter the passcode from the group chat";
   })();
+
+  // ---------- updates ----------
+  async function checkForUpdate() {
+    try {
+      const v = (await (await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" })).json()).v;
+      $("#update-banner").hidden = String(v) === APP_VERSION;
+    } catch {}
+  }
+  async function hardReload() {
+    $("#reload").classList.add("spin");
+    try { if (syncUrl) await flush(); } catch {}
+    location.replace(`${location.pathname}?r=${Date.now()}`);
+  }
+  $("#reload").addEventListener("click", hardReload);
+  $("#update-banner").addEventListener("click", hardReload);
+  checkForUpdate();
+  setInterval(checkForUpdate, 5 * 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
 
   // ---------- global events ----------
   document.addEventListener("click", (e) => {
