@@ -12,7 +12,7 @@
   <title>Chicago Weekend</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✶</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
   <!-- Lock screen -->
@@ -224,6 +224,7 @@
       <p class="small muted">Paste as many Eventbrite, Partiful, Dice, RA or other links as you want — one per line, or a whole message. Each one lands in Maybe → Events with its name, picture and date when we can find them.</p>
       <p class="small muted">Site won't share its details (like RA)? Copy the event's name, date and venue from the page and paste that text right before or after its link. Leave a blank line between events.</p>
       <div id="bulk-hint" class="small" style="color:var(--blue)"></div>
+      <div id="bulk-ra" class="small ra-warn" hidden></div>
       <textarea id="bulk-text" rows="7" placeholder="https://www.eventbrite.com/e/…&#10;https://partiful.com/e/…&#10;https://dice.fm/event/…"></textarea>
       <ul id="bulk-log" class="bulk-log"></ul>
       <button type="button" id="bulk-retry" class="btn" hidden>↻ Retry</button>
@@ -262,7 +263,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="places.js?v=18"></script>
-  <script src="app.js?v=18"></script>
+  <script src="places.js?v=19"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

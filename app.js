@@ -12,7 +12,7 @@
   ];
   const JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   const POLL_MS = 10000;
-  const APP_VERSION = "18";   // keep in sync with version.json and the ?v= in index.html
+  const APP_VERSION = "19";   // keep in sync with version.json and the ?v= in index.html
   const LS = {
     pass: "chi.passcode",
     name: "chi.name",
@@ -936,7 +936,9 @@
     $("details.more", form).open = true;
     st.textContent = p.ok
       ? `✓ Got it${p.day ? ` — ${dayLabel(p.day)}${p.time ? " · " + p.time : ""}` : " — pick a day"}`
-      : "Couldn't read that link — saved it, just type a name.";
+      : IS_RA.test(url)
+        ? "⚠️ With RA links, please paste the description — RA doesn't share event details. Type the name and pick the day, or use 📋 Bulk add and paste the RA page text under the link."
+        : "Couldn't read that link — saved it, just type a name.";
     if (!form.title.value.trim()) form.title.focus();
   }
   $("#reread").addEventListener("click", () => importLink(form.url.value, { force: true }));
@@ -951,6 +953,7 @@
 
   // ---------- bulk add ----------
   const bulk = $("#bulk-dialog");
+  const IS_RA = /(^|[/.])ra\.co\/|residentadvisor/i;
   const URL_RE = /https?:\/\/[^\s<>"')\]]+/g;
   const tidyUrl = (u) => u.replace(/[.,;!]+$/, "");
   const urlsIn = (text) => [...new Set((String(text).match(URL_RE) || []).map(tidyUrl))];
@@ -1041,7 +1044,10 @@
     const n = entries.length, withText = entries.filter((e) => e.text).length;
     $("#bulk-go").textContent = n ? `Add ${n} event${n === 1 ? "" : "s"}` : "Add all";
     $("#bulk-go").disabled = !n;
+    const raBare = entries.filter((e) => e.url && IS_RA.test(e.url) && !e.text).length;
     $("#bulk-hint").textContent = withText ? `📝 Using the text you pasted for ${withText} of them` : "";
+    $("#bulk-ra").hidden = !raBare;
+    $("#bulk-ra").innerHTML = `⚠️ <b>With RA links, please paste the description.</b> RA doesn't share event details, so copy the name, date and venue from the RA page and paste it right under ${raBare === 1 ? "the link" : `each of the ${raBare} RA links`}.`;
   }
   $("#bulk-text").addEventListener("input", bulkCount);
   $("#bulk-paste").addEventListener("click", async () => {
@@ -1067,7 +1073,7 @@
     if (!li) return;
     li.innerHTML = p.ok
       ? `${fromText ? "📝" : "✅"} <b>${esc(title)}</b>${p.day ? ` <span class="muted">· ${esc(dayLabel(p.day))}${p.time ? " " + esc(p.time) : ""}</span>` : ` <span class="muted">· no date found — set it with 📅</span>`}`
-      : `⚠️ <b>${esc(title)}</b> <span class="muted">· saved, but the site didn't share details</span>`;
+      : `⚠️ <b>${esc(title)}</b> <span class="muted">· saved, but the site didn't share details${p.url && IS_RA.test(p.url) ? " — with RA links, please paste the description under the link" : ""}</span>`;
   }
   function setRetry() {
     $("#bulk-retry").hidden = !bulkFailed.length;
